@@ -16,6 +16,11 @@ client = MongoClient(os.getenv("MONGO_URL"))
 db = client['allJobs']
 collection = db['ericsson']
 
+# status check
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    return jsonify({"status": "ok"})
+
 @app.route('/api/jobs', methods=['GET'])
 def get_jobs():
     try:
