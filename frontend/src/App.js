@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 
+
 function App() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -9,7 +10,7 @@ function App() {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:8000/api/jobs');
+        const response = await fetch(process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs');
         if (!response.ok) {
           throw new Error('Failed to fetch jobs');
         }
