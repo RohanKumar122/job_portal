@@ -328,8 +328,9 @@ function JobRow({ company, jobs }) {
 
 function JobCard({ job }) {
   const formattedDate = new Date(job.postedAt || job.createdAt).toLocaleDateString('en-US', {
+    day: 'numeric',
     month: 'short',
-    day: 'numeric'
+    year: 'numeric'
   });
 
   return (
