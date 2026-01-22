@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 function App() {
   const [jobs, setJobs] = useState([]);
@@ -43,7 +43,6 @@ function App() {
       filtered = filtered.filter(job => job.companyName === selectedCompany);
     }
 
-    // Sort globally or inside groups? Let's sort now.
     filtered.sort((a, b) => {
       const dateA = new Date(a.postedAt || a.createdAt);
       const dateB = new Date(b.postedAt || b.createdAt);
@@ -110,7 +109,7 @@ function App() {
             Elevate Your <span className="bg-gradient-to-r from-indigo-400 via-fuchsia-400 to-indigo-400 bg-[length:200%_auto] animate-gradient bg-clip-text text-transparent">Professional</span> Journey
           </h2>
           <p className="text-slate-400 text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-medium px-4">
-            Discover opportunities grouped by company. Swipe through the rows to find your dream role.
+            Discover opportunities grouped by company. Explore each row to find your dream role.
           </p>
 
           {/* Search and Filters */}
@@ -168,7 +167,7 @@ function App() {
         </section>
 
         {/* Content Section */}
-        <section className="mt-4 sm:mt-8 space-y-10 sm:space-y-16">
+        <section className="mt-4 sm:mt-8 space-y-10 sm:space-y-20">
           {loading ? (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8">
               {[1, 2, 3, 4, 5, 6].map(i => (
@@ -187,28 +186,7 @@ function App() {
             </div>
           ) : sortedCompanyNames.length > 0 ? (
             sortedCompanyNames.map(company => (
-              <div key={company} className="w-full">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4 sm:mb-6 flex items-center justify-between">
-                  <h3 className="text-xl sm:text-2xl font-black text-white flex items-center gap-3">
-                    <span className="w-2 h-8 bg-indigo-500 rounded-full"></span>
-                    {company}
-                    <span className="text-xs font-bold text-slate-500 bg-white/5 px-2 py-1 rounded-md ml-2">
-                      {groupedJobs[company].length} Positions
-                    </span>
-                  </h3>
-                </div>
-
-                {/* Horizontal Scroll Area */}
-                <div className="relative group/container">
-                  <div className="flex overflow-x-auto gap-4 sm:gap-6 px-4 sm:px-8 lg:px-[calc((100vw-1280px)/2+2rem)] no-scrollbar pb-6 scroll-smooth snap-x">
-                    {groupedJobs[company].map((job) => (
-                      <div key={job._id || job.id} className="flex-shrink-0 w-72 sm:w-80 md:w-[26rem] snap-start">
-                        <JobCard job={job} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <JobRow key={company} company={company} jobs={groupedJobs[company]} />
             ))
           ) : (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-12 sm:py-24 bg-white/5 border border-white/5 rounded-2xl sm:rounded-3xl">
@@ -250,6 +228,104 @@ function App() {
   );
 }
 
+function JobRow({ company, jobs }) {
+  const scrollRef = useRef(null);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(true);
+  const [remainingCount, setRemainingCount] = useState(jobs.length);
+
+  const updateArrows = () => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      setShowLeftArrow(scrollLeft > 10);
+      setShowRightArrow(scrollLeft + clientWidth < scrollWidth - 10);
+
+      // Calculate approximately how many cards are hidden to the right
+      // Card width is roughly 320px-416px. Let's use 380px as avg.
+      const hiddenWidth = scrollWidth - (scrollLeft + clientWidth);
+      const hiddenCount = Math.max(0, Math.ceil(hiddenWidth / 380));
+      setRemainingCount(hiddenCount);
+    }
+  };
+
+  useEffect(() => {
+    updateArrows();
+    window.addEventListener('resize', updateArrows);
+    return () => window.removeEventListener('resize', updateArrows);
+  }, [jobs]);
+
+  const scroll = (direction) => {
+    if (scrollRef.current) {
+      const { clientWidth } = scrollRef.current;
+      const scrollAmount = direction === 'left' ? -clientWidth * 0.8 : clientWidth * 0.8;
+      scrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  return (
+    <div className="w-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4 sm:mb-6 flex items-center justify-between">
+        <h3 className="text-xl sm:text-2xl font-black text-white flex items-center gap-3">
+          <span className="w-2 h-8 bg-indigo-500 rounded-full"></span>
+          {company}
+          <span className="text-[10px] font-black text-slate-400 bg-white/5 px-2 py-1 rounded-md border border-white/5 uppercase tracking-widest">
+            {jobs.length} Results
+          </span>
+        </h3>
+
+        <div className="flex items-center gap-4">
+          {remainingCount > 0 && (
+            <span className="hidden sm:block text-[10px] font-black text-indigo-400/80 bg-indigo-500/5 px-3 py-1.5 rounded-full border border-indigo-500/10 uppercase tracking-widest animate-pulse">
+              +{remainingCount} More Ahead
+            </span>
+          )}
+          <div className="hidden md:flex gap-2">
+            <button
+              onClick={() => scroll('left')}
+              className={`w-10 h-10 rounded-full border border-white/10 flex items-center justify-center transition-all ${showLeftArrow ? 'bg-white/5 opacity-100 hover:scale-110' : 'opacity-20 cursor-not-allowed'}`}
+              disabled={!showLeftArrow}
+            >
+              <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg>
+            </button>
+            <button
+              onClick={() => scroll('right')}
+              className={`w-10 h-10 rounded-full border border-white/10 flex items-center justify-center transition-all ${showRightArrow ? 'bg-white/5 opacity-100 hover:scale-110' : 'opacity-20 cursor-not-allowed'}`}
+              disabled={!showRightArrow}
+            >
+              <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative group/row">
+        {/* Shadow Indicators for Desktop */}
+        <div className={`hidden md:block absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-[#0f172a] to-transparent z-10 pointer-events-none transition-opacity duration-300 ${showLeftArrow ? 'opacity-100' : 'opacity-0'}`}></div>
+        <div className={`hidden md:block absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-[#0f172a] to-transparent z-10 pointer-events-none transition-opacity duration-300 ${showRightArrow ? 'opacity-100' : 'opacity-0'}`}></div>
+
+        <div
+          ref={scrollRef}
+          onScroll={updateArrows}
+          className="flex items-stretch overflow-x-auto gap-4 sm:gap-6 px-4 sm:px-8 lg:px-[calc((100vw-1280px)/2+2rem)] no-scrollbar pb-12 scroll-smooth snap-x"
+        >
+          {jobs.map((job) => (
+            <div key={job._id || job.id} className="flex-shrink-0 w-72 sm:w-80 md:w-[26rem] snap-start">
+              <JobCard job={job} />
+            </div>
+          ))}
+
+          {/* End of row indicator */}
+          <div className="flex-shrink-0 w-24 flex items-center justify-center pr-8 sm:pr-0">
+            <div className="w-12 h-12 rounded-full border border-white/5 bg-white/5 flex items-center justify-center">
+              <svg className="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function JobCard({ job }) {
   const formattedDate = new Date(job.postedAt || job.createdAt).toLocaleDateString('en-US', {
     month: 'short',
@@ -257,42 +333,44 @@ function JobCard({ job }) {
   });
 
   return (
-    <div className="group relative bg-[#1e293b]/40 hover:bg-[#1e293b]/80 border border-white/5 rounded-2xl sm:rounded-[2rem] p-5 sm:p-8 h-full transition-all duration-500 hover:shadow-[0_20px_50px_rgba(79,70,229,0.15)] hover:-translate-y-1 sm:hover:-translate-y-2 backdrop-blur-sm overflow-hidden flex flex-col">
+    <div className="group relative bg-[#1e293b]/40 hover:bg-[#1e293b]/80 border border-white/5 rounded-2xl sm:rounded-[2rem] p-5 sm:p-8 h-full min-h-[340px] transition-all duration-500 hover:shadow-[0_20px_50px_rgba(79,70,229,0.15)] hover:-translate-y-2 backdrop-blur-sm overflow-hidden flex flex-col justify-between">
       {/* Accent Line */}
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-fuchsia-500 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left"></div>
 
-      <div className="flex justify-between items-start mb-4 sm:mb-6">
-        <div className="flex-1 min-w-0">
-          <span className="inline-block px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-[8px] sm:text-[10px] font-black uppercase tracking-tighter mb-2 sm:mb-3 border border-indigo-500/20">
-            {job.department || 'General'}
-          </span>
-          <h3 className="text-lg sm:text-2xl font-bold text-white group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-indigo-300 group-hover:bg-clip-text transition-all duration-300 leading-tight">
-            {job.name}
-          </h3>
-          <p className="text-slate-400 font-bold text-xs sm:text-sm mt-1 flex items-center gap-1.5 sm:gap-2">
-            <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-slate-600"></span>
-            <span className="truncate">{job.companyName.toUpperCase()}</span>
-          </p>
+      <div className="flex flex-col flex-grow">
+        <div className="flex justify-between items-start mb-4 sm:mb-6">
+          <div className="flex-1 min-w-0">
+            <span className="inline-block px-2 py-0.5 sm:px-3 sm:py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-[8px] sm:text-[10px] font-black uppercase tracking-tighter mb-2 sm:mb-3 border border-indigo-500/20">
+              {job.department || 'General'}
+            </span>
+            <h3 className="text-lg sm:text-2xl font-bold text-white group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-indigo-300 group-hover:bg-clip-text transition-all duration-300 leading-tight">
+              {job.name}
+            </h3>
+            <p className="text-slate-400 font-bold text-xs sm:text-sm mt-1 flex items-center gap-1.5 sm:gap-2">
+              <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-slate-600"></span>
+              <span className="truncate">{job.companyName.toUpperCase()}</span>
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8 flex-grow">
-        <div className="flex items-center text-slate-400 text-xs sm:text-sm font-medium">
-          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-slate-800 flex items-center justify-center mr-2 sm:mr-3 group-hover:bg-indigo-500/20 transition-colors">
-            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 group-hover:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+        <div className="space-y-3 sm:space-y-4 mb-6">
+          <div className="flex items-center text-slate-400 text-xs sm:text-sm font-medium">
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-slate-800 flex items-center justify-center mr-2 sm:mr-3 group-hover:bg-indigo-500/20 transition-colors">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 group-hover:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <span className="truncate">{job.locations?.[0] || 'Remote'}</span>
           </div>
-          <span className="truncate">{job.locations?.[0] || 'Remote'}</span>
-        </div>
-        <div className="flex items-center text-slate-400 text-xs sm:text-sm font-medium">
-          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-slate-800 flex items-center justify-center mr-2 sm:mr-3 group-hover:bg-indigo-500/20 transition-colors">
-            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 group-hover:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
+          <div className="flex items-center text-slate-400 text-xs sm:text-sm font-medium">
+            <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-slate-800 flex items-center justify-center mr-2 sm:mr-3 group-hover:bg-indigo-500/20 transition-colors">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 group-hover:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            Posted {formattedDate}
           </div>
-          Posted {formattedDate}
         </div>
       </div>
 
