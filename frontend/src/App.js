@@ -7,7 +7,12 @@ function App() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('All');
+  const [selectedLocation, setSelectedLocation] = useState('All');
   const [sortOrder, setSortOrder] = useState('newest');
+  const [dateFilter, setDateFilter] = useState('all'); // all, last10, lastMonth, thisYear, custom
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -32,6 +37,7 @@ function App() {
   const groupedJobs = useMemo(() => {
     let filtered = [...jobs];
 
+    // Search query filter
     if (searchQuery) {
       filtered = filtered.filter(job =>
         job.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -39,10 +45,46 @@ function App() {
       );
     }
 
+    // Company filter
     if (selectedCompany !== 'All') {
       filtered = filtered.filter(job => job.companyName === selectedCompany);
     }
 
+    // Location filter
+    if (selectedLocation !== 'All') {
+      filtered = filtered.filter(job => job.locations?.some(loc => loc.toLowerCase().includes(selectedLocation.toLowerCase())));
+    }
+
+    // Date filtering
+    const now = new Date();
+    if (dateFilter !== 'all') {
+      filtered = filtered.filter(job => {
+        const jobDate = new Date(job.postedAt || job.createdAt);
+        if (dateFilter === 'last10') {
+          const tenDaysAgo = new Date();
+          tenDaysAgo.setDate(now.getDate() - 10);
+          return jobDate >= tenDaysAgo;
+        }
+        if (dateFilter === 'lastMonth') {
+          const oneMonthAgo = new Date();
+          oneMonthAgo.setMonth(now.getMonth() - 1);
+          return jobDate >= oneMonthAgo;
+        }
+        if (dateFilter === 'thisYear') {
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          return jobDate >= startOfYear;
+        }
+        if (dateFilter === 'custom' && startDate && endDate) {
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999); // Inclusion of the full end day
+          return jobDate >= start && jobDate <= end;
+        }
+        return true;
+      });
+    }
+
+    // Sorting
     filtered.sort((a, b) => {
       const dateA = new Date(a.postedAt || a.createdAt);
       const dateB = new Date(b.postedAt || b.createdAt);
@@ -57,7 +99,7 @@ function App() {
     }, {});
 
     return groups;
-  }, [jobs, searchQuery, selectedCompany, sortOrder]);
+  }, [jobs, searchQuery, selectedCompany, selectedLocation, sortOrder, dateFilter, startDate, endDate]);
 
   const sortedCompanyNames = useMemo(() => {
     return Object.keys(groupedJobs).sort();
@@ -65,6 +107,12 @@ function App() {
 
   const companiesList = useMemo(() => {
     const unique = ['All', ...new Set(jobs.map(job => job.companyName))];
+    return unique;
+  }, [jobs]);
+
+  const locationsList = useMemo(() => {
+    const allLocs = jobs.flatMap(job => job.locations || []);
+    const unique = ['All', ...new Set(allLocs)];
     return unique;
   }, [jobs]);
 
@@ -114,7 +162,7 @@ function App() {
 
           {/* Search and Filters */}
           <div className="max-w-4xl mx-auto mt-8 sm:mt-12">
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-1.5 sm:p-2 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col md:flex-row gap-1 sm:gap-2">
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-1.5 sm:p-2 rounded-2xl sm:rounded-3xl shadow-2xl flex items-center gap-2">
               <div className="flex-1 relative">
                 <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -128,43 +176,215 @@ function App() {
                 />
               </div>
 
-              <div className="h-px md:h-8 md:w-px bg-white/10 mx-2 md:my-auto"></div>
+              <div className="h-8 w-px bg-white/10 mx-1"></div>
 
-              <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 sm:items-center">
-                <div className="relative group flex-1">
-                  <select
-                    className="w-full appearance-none bg-transparent border-none focus:ring-0 py-3 sm:py-4 pl-4 pr-10 text-sm sm:text-base text-white font-medium cursor-pointer"
-                    value={selectedCompany}
-                    onChange={(e) => setSelectedCompany(e.target.value)}
+              <button
+                onClick={() => setIsFilterOpen(true)}
+                className="flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm sm:text-base font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95 whitespace-nowrap"
+              >
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                <span className="hidden sm:inline">Filters</span>
+                {(selectedCompany !== 'All' || selectedLocation !== 'All' || dateFilter !== 'all') && (
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Active Filter Chips */}
+          {(selectedCompany !== 'All' || selectedLocation !== 'All' || dateFilter !== 'all') && (
+            <div className="flex flex-wrap justify-center gap-2 mt-4 max-w-4xl mx-auto">
+              {selectedCompany !== 'All' && (
+                <button 
+                  onClick={() => setSelectedCompany('All')}
+                  className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[10px] font-bold text-indigo-400 flex items-center gap-2"
+                >
+                  Company: {selectedCompany} <span className="opacity-50">×</span>
+                </button>
+              )}
+              {selectedLocation !== 'All' && (
+                <button 
+                  onClick={() => setSelectedLocation('All')}
+                  className="px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/20 text-[10px] font-bold text-fuchsia-400 flex items-center gap-2"
+                >
+                  Location: {selectedLocation} <span className="opacity-50">×</span>
+                </button>
+              )}
+              {dateFilter !== 'all' && (
+                <button 
+                  onClick={() => setDateFilter('all')}
+                  className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 flex items-center gap-2"
+                >
+                  Date: {dateFilter === 'last10' ? 'Last 10 Days' : dateFilter === 'lastMonth' ? 'Last Month' : dateFilter === 'thisYear' ? 'This Year' : 'Custom'} <span className="opacity-50">×</span>
+                </button>
+              )}
+              <button 
+                onClick={() => {
+                  setSelectedCompany('All');
+                  setSelectedLocation('All');
+                  setDateFilter('all');
+                  setSearchQuery('');
+                }}
+                className="text-[10px] font-bold text-slate-500 hover:text-white transition-colors ml-2"
+              >
+                Clear All
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* Filter Modal */}
+        {isFilterOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div 
+              className="absolute inset-0 bg-[#020617]/80 backdrop-blur-sm"
+              onClick={() => setIsFilterOpen(false)}
+            ></div>
+            <div className="relative w-full max-w-xl bg-[#0f172a] border border-white/10 rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+              <div className="p-6 sm:p-8 space-y-8">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-2xl font-black text-white px-1">Filter Openings</h3>
+                  <button 
+                    onClick={() => setIsFilterOpen(false)}
+                    className="p-2 rounded-full hover:bg-white/5 transition-colors text-slate-400"
                   >
-                    {companiesList.map(company => (
-                      <option key={company} value={company} className="bg-[#1e293b] text-white">{company}</option>
-                    ))}
-                  </select>
-                  <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                  </svg>
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
 
-                <div className="hidden sm:block h-6 w-px bg-white/10"></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Company Filter */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Company</label>
+                    <div className="relative group">
+                      <select
+                        className="w-full appearance-none bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-10 text-white font-medium cursor-pointer focus:ring-2 focus:ring-indigo-500/50 transition-all outline-none"
+                        value={selectedCompany}
+                        onChange={(e) => setSelectedCompany(e.target.value)}
+                      >
+                        {companiesList.map(company => (
+                          <option key={company} value={company} className="bg-[#1e293b] text-white">{company}</option>
+                        ))}
+                      </select>
+                      <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
 
-                <div className="relative group flex-1">
-                  <select
-                    className="w-full appearance-none bg-transparent border-none focus:ring-0 py-3 sm:py-4 pl-4 pr-10 text-sm sm:text-base text-white font-medium cursor-pointer"
-                    value={sortOrder}
-                    onChange={(e) => setSortOrder(e.target.value)}
+                  {/* Location Filter */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Location</label>
+                    <div className="relative group">
+                      <select
+                        className="w-full appearance-none bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-10 text-white font-medium cursor-pointer focus:ring-2 focus:ring-indigo-500/50 transition-all outline-none"
+                        value={selectedLocation}
+                        onChange={(e) => setSelectedLocation(e.target.value)}
+                      >
+                        {locationsList.map(loc => (
+                          <option key={loc} value={loc} className="bg-[#1e293b] text-white">{loc}</option>
+                        ))}
+                      </select>
+                      <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Date Filter */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Posted Period</label>
+                    <div className="relative group">
+                      <select
+                        className="w-full appearance-none bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-10 text-white font-medium cursor-pointer focus:ring-2 focus:ring-indigo-500/50 transition-all outline-none"
+                        value={dateFilter}
+                        onChange={(e) => setDateFilter(e.target.value)}
+                      >
+                        <option value="all" className="bg-[#1e293b]">All Time</option>
+                        <option value="last10" className="bg-[#1e293b]">Last 10 Days</option>
+                        <option value="lastMonth" className="bg-[#1e293b]">Last 1 Month</option>
+                        <option value="thisYear" className="bg-[#1e293b]">This Year</option>
+                        <option value="custom" className="bg-[#1e293b]">Custom Range</option>
+                      </select>
+                      <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Sort Order */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Sort By</label>
+                    <div className="relative group">
+                      <select
+                        className="w-full appearance-none bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-10 text-white font-medium cursor-pointer focus:ring-2 focus:ring-indigo-500/50 transition-all outline-none"
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value)}
+                      >
+                        <option value="newest" className="bg-[#1e293b]">Newest First</option>
+                        <option value="oldest" className="bg-[#1e293b]">Oldest First</option>
+                      </select>
+                      <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                {dateFilter === 'custom' && (
+                  <div className="pt-2 animate-in slide-in-from-top-4 fade-in duration-300">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1 mb-3 block">Custom Range</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="relative">
+                        <input
+                          type="date"
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 px-4 text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all [color-scheme:dark]"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="date"
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 px-4 text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all [color-scheme:dark]"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-8 flex gap-4">
+                  <button
+                    onClick={() => {
+                      setSelectedCompany('All');
+                      setSelectedLocation('All');
+                      setSortOrder('newest');
+                      setDateFilter('all');
+                      setStartDate('');
+                      setEndDate('');
+                    }}
+                    className="flex-1 py-4 px-6 rounded-2xl border border-white/10 text-slate-400 font-bold hover:bg-white/5 hover:text-white transition-all text-sm uppercase tracking-widest"
                   >
-                    <option value="newest" className="bg-[#1e293b]">Newest</option>
-                    <option value="oldest" className="bg-[#1e293b]">Oldest</option>
-                  </select>
-                  <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-                  </svg>
+                    Reset
+                  </button>
+                  <button
+                    onClick={() => setIsFilterOpen(false)}
+                    className="flex-[2] py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white font-bold hover:scale-[1.02] active:scale-95 transition-all text-sm uppercase tracking-widest shadow-xl shadow-indigo-600/20"
+                  >
+                    Show Results
+                  </button>
                 </div>
               </div>
             </div>
           </div>
-        </section>
+        )}
+
 
         {/* Content Section */}
         <section className="mt-4 sm:mt-8 space-y-10 sm:space-y-20">
