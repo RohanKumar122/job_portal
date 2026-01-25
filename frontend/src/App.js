@@ -7,7 +7,7 @@ function App() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('All');
-  const [selectedLocation, setSelectedLocation] = useState('All');
+  const [selectedCountry, setSelectedCountry] = useState('All');
   const [sortOrder, setSortOrder] = useState('newest');
   const [dateFilter, setDateFilter] = useState('all'); // all, last10, lastMonth, thisYear, custom
   const [startDate, setStartDate] = useState('');
@@ -50,9 +50,13 @@ function App() {
       filtered = filtered.filter(job => job.companyName === selectedCompany);
     }
 
-    // Location filter
-    if (selectedLocation !== 'All') {
-      filtered = filtered.filter(job => job.locations?.some(loc => loc.toLowerCase().includes(selectedLocation.toLowerCase())));
+    // Country filter
+    if (selectedCountry !== 'All') {
+      filtered = filtered.filter(job => job.locations?.some(loc => {
+        const parts = loc.split(',');
+        const country = parts[parts.length - 1].trim().toLowerCase();
+        return country === selectedCountry.toLowerCase();
+      }));
     }
 
     // Date filtering
@@ -99,7 +103,7 @@ function App() {
     }, {});
 
     return groups;
-  }, [jobs, searchQuery, selectedCompany, selectedLocation, sortOrder, dateFilter, startDate, endDate]);
+  }, [jobs, searchQuery, selectedCompany, selectedCountry, sortOrder, dateFilter, startDate, endDate]);
 
   const sortedCompanyNames = useMemo(() => {
     return Object.keys(groupedJobs).sort();
@@ -110,10 +114,20 @@ function App() {
     return unique;
   }, [jobs]);
 
-  const locationsList = useMemo(() => {
+  const countriesList = useMemo(() => {
     const allLocs = jobs.flatMap(job => job.locations || []);
-    const unique = ['All', ...new Set(allLocs)];
-    return unique;
+    const countries = allLocs.map(loc => {
+      const parts = loc.split(',');
+      return parts[parts.length - 1].trim();
+    }).filter(c => c && c.toLowerCase() !== 'remote');
+
+    const unique = ['All', ...new Set(countries)];
+    // Handle Remote as a special case if needed or just included in countries
+    return unique.sort((a, b) => {
+      if (a === 'All') return -1;
+      if (b === 'All') return 1;
+      return a.localeCompare(b);
+    });
   }, [jobs]);
 
   return (
@@ -186,7 +200,7 @@ function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
                 <span className="hidden sm:inline">Filters</span>
-                {(selectedCompany !== 'All' || selectedLocation !== 'All' || dateFilter !== 'all') && (
+                {(selectedCompany !== 'All' || selectedCountry !== 'All' || dateFilter !== 'all') && (
                   <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
                 )}
               </button>
@@ -194,36 +208,36 @@ function App() {
           </div>
 
           {/* Active Filter Chips */}
-          {(selectedCompany !== 'All' || selectedLocation !== 'All' || dateFilter !== 'all') && (
+          {(selectedCompany !== 'All' || selectedCountry !== 'All' || dateFilter !== 'all') && (
             <div className="flex flex-wrap justify-center gap-2 mt-4 max-w-4xl mx-auto">
               {selectedCompany !== 'All' && (
-                <button 
+                <button
                   onClick={() => setSelectedCompany('All')}
                   className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[10px] font-bold text-indigo-400 flex items-center gap-2"
                 >
                   Company: {selectedCompany} <span className="opacity-50">×</span>
                 </button>
               )}
-              {selectedLocation !== 'All' && (
-                <button 
-                  onClick={() => setSelectedLocation('All')}
+              {selectedCountry !== 'All' && (
+                <button
+                  onClick={() => setSelectedCountry('All')}
                   className="px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/20 text-[10px] font-bold text-fuchsia-400 flex items-center gap-2"
                 >
-                  Location: {selectedLocation} <span className="opacity-50">×</span>
+                  Country: {selectedCountry} <span className="opacity-50">×</span>
                 </button>
               )}
               {dateFilter !== 'all' && (
-                <button 
+                <button
                   onClick={() => setDateFilter('all')}
                   className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 flex items-center gap-2"
                 >
                   Date: {dateFilter === 'last10' ? 'Last 10 Days' : dateFilter === 'lastMonth' ? 'Last Month' : dateFilter === 'thisYear' ? 'This Year' : 'Custom'} <span className="opacity-50">×</span>
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => {
                   setSelectedCompany('All');
-                  setSelectedLocation('All');
+                  setSelectedCountry('All');
                   setDateFilter('all');
                   setSearchQuery('');
                 }}
@@ -238,7 +252,7 @@ function App() {
         {/* Filter Modal */}
         {isFilterOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div 
+            <div
               className="absolute inset-0 bg-[#020617]/80 backdrop-blur-sm"
               onClick={() => setIsFilterOpen(false)}
             ></div>
@@ -246,7 +260,7 @@ function App() {
               <div className="p-6 sm:p-8 space-y-8">
                 <div className="flex items-center justify-between">
                   <h3 className="text-2xl font-black text-white px-1">Filter Openings</h3>
-                  <button 
+                  <button
                     onClick={() => setIsFilterOpen(false)}
                     className="p-2 rounded-full hover:bg-white/5 transition-colors text-slate-400"
                   >
@@ -276,17 +290,17 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Location Filter */}
+                  {/* Country Filter */}
                   <div className="space-y-3">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Location</label>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Country</label>
                     <div className="relative group">
                       <select
                         className="w-full appearance-none bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-10 text-white font-medium cursor-pointer focus:ring-2 focus:ring-indigo-500/50 transition-all outline-none"
-                        value={selectedLocation}
-                        onChange={(e) => setSelectedLocation(e.target.value)}
+                        value={selectedCountry}
+                        onChange={(e) => setSelectedCountry(e.target.value)}
                       >
-                        {locationsList.map(loc => (
-                          <option key={loc} value={loc} className="bg-[#1e293b] text-white">{loc}</option>
+                        {countriesList.map(country => (
+                          <option key={country} value={country} className="bg-[#1e293b] text-white">{country}</option>
                         ))}
                       </select>
                       <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -363,7 +377,7 @@ function App() {
                   <button
                     onClick={() => {
                       setSelectedCompany('All');
-                      setSelectedLocation('All');
+                      setSelectedCountry('All');
                       setSortOrder('newest');
                       setDateFilter('all');
                       setStartDate('');
