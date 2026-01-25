@@ -1,13 +1,34 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 
+const normalizeCountry = (loc) => {
+  if (!loc) return null;
+  const l = loc.toLowerCase();
+  if (l.includes('remote')) return null;
+
+  const text = loc.toUpperCase().trim();
+
+  // Comprehensive Mapping
+  if (/\b(INDIA|IN|IND)\b/i.test(text) || text.includes('INDIA-') || text.startsWith('IND-') || text.startsWith('IN-')) return 'India';
+  if (/\b(USA|US|UNITED STATES|AMERICA|U\.S\.A\.)\b/i.test(text)) return 'USA';
+  if (/\b(UK|UNITED KINGDOM|GB|GREAT BRITAIN|U\.K\.)\b/i.test(text)) return 'UK';
+  if (/\b(CANADA|CA|CAN)\b/i.test(text)) return 'Canada';
+  if (/\b(SINGAPORE|SG|SGP)\b/i.test(text)) return 'Singapore';
+  if (/\b(GERMANY|DE|GER)\b/i.test(text)) return 'Germany';
+  if (/\b(AUSTRALIA|AU|AUS)\b/i.test(text)) return 'Australia';
+
+  const parts = loc.split(',');
+  const possibleCountry = parts[parts.length - 1].trim();
+  return possibleCountry || null;
+};
+
 function App() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('All');
-  const [selectedCountries, setSelectedCountries] = useState([]); // Array for multi-select
+  const [selectedCountries, setSelectedCountries] = useState([]); // Multiple selection
   const [sortOrder, setSortOrder] = useState('newest');
   const [dateFilter, setDateFilter] = useState('all'); // all, last10, lastMonth, thisYear, custom
   const [startDate, setStartDate] = useState('');
@@ -32,23 +53,6 @@ function App() {
 
     fetchJobs();
   }, []);
-
-  const normalizeCountry = (loc) => {
-    if (!loc || loc.toLowerCase().includes('remote')) return null;
-    const text = loc.toUpperCase().trim();
-
-    // Precise Regex Mapping
-    if (/\b(INDIA|IN)\b/i.test(text) || text.includes('INDIA-')) return 'India';
-    if (/\b(USA|US|UNITED STATES|AMERICA)\b/i.test(text)) return 'USA';
-    if (/\b(UK|UNITED KINGDOM|GB|GREAT BRITAIN)\b/i.test(text)) return 'UK';
-    if (/\b(CANADA|CA)\b/i.test(text)) return 'Canada';
-    if (/\b(SINGAPORE|SG)\b/i.test(text)) return 'Singapore';
-    if (/\b(GERMANY|DE)\b/i.test(text)) return 'Germany';
-    if (/\b(AUSTRALIA|AU)\b/i.test(text)) return 'Australia';
-
-    const parts = loc.split(',');
-    return parts[parts.length - 1].trim();
-  };
 
   // Filter and Group Logic
   const groupedJobs = useMemo(() => {
@@ -138,7 +142,7 @@ function App() {
 
     const unique = [...new Set(countries)];
     return unique.sort((a, b) => a.localeCompare(b));
-  }, [jobs, normalizeCountry]);
+  }, [jobs]);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans selection:bg-indigo-500 selection:text-white pb-20 overflow-x-hidden">
