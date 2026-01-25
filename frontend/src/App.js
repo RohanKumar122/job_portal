@@ -7,7 +7,7 @@ function App() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('All');
-  const [selectedCountry, setSelectedCountry] = useState('All');
+  const [selectedCountries, setSelectedCountries] = useState([]); // Array for multi-select
   const [sortOrder, setSortOrder] = useState('newest');
   const [dateFilter, setDateFilter] = useState('all'); // all, last10, lastMonth, thisYear, custom
   const [startDate, setStartDate] = useState('');
@@ -33,6 +33,23 @@ function App() {
     fetchJobs();
   }, []);
 
+  const normalizeCountry = (loc) => {
+    if (!loc || loc.toLowerCase().includes('remote')) return null;
+    const text = loc.toUpperCase().trim();
+
+    // Precise Regex Mapping
+    if (/\b(INDIA|IN)\b/i.test(text) || text.includes('INDIA-')) return 'India';
+    if (/\b(USA|US|UNITED STATES|AMERICA)\b/i.test(text)) return 'USA';
+    if (/\b(UK|UNITED KINGDOM|GB|GREAT BRITAIN)\b/i.test(text)) return 'UK';
+    if (/\b(CANADA|CA)\b/i.test(text)) return 'Canada';
+    if (/\b(SINGAPORE|SG)\b/i.test(text)) return 'Singapore';
+    if (/\b(GERMANY|DE)\b/i.test(text)) return 'Germany';
+    if (/\b(AUSTRALIA|AU)\b/i.test(text)) return 'Australia';
+
+    const parts = loc.split(',');
+    return parts[parts.length - 1].trim();
+  };
+
   // Filter and Group Logic
   const groupedJobs = useMemo(() => {
     let filtered = [...jobs];
@@ -50,13 +67,14 @@ function App() {
       filtered = filtered.filter(job => job.companyName === selectedCompany);
     }
 
-    // Country filter
-    if (selectedCountry !== 'All') {
-      filtered = filtered.filter(job => job.locations?.some(loc => {
-        const parts = loc.split(',');
-        const country = parts[parts.length - 1].trim().toLowerCase();
-        return country === selectedCountry.toLowerCase();
-      }));
+    // Country filter (Multi-select)
+    if (selectedCountries.length > 0) {
+      filtered = filtered.filter(job =>
+        job.locations?.some(loc => {
+          const norm = normalizeCountry(loc);
+          return norm && selectedCountries.includes(norm);
+        })
+      );
     }
 
     // Date filtering
@@ -103,7 +121,7 @@ function App() {
     }, {});
 
     return groups;
-  }, [jobs, searchQuery, selectedCompany, selectedCountry, sortOrder, dateFilter, startDate, endDate]);
+  }, [jobs, searchQuery, selectedCompany, selectedCountries, sortOrder, dateFilter, startDate, endDate]);
 
   const sortedCompanyNames = useMemo(() => {
     return Object.keys(groupedJobs).sort();
@@ -115,20 +133,12 @@ function App() {
   }, [jobs]);
 
   const countriesList = useMemo(() => {
-    const allLocs = jobs.flatMap(job => job.locations || []);
-    const countries = allLocs.map(loc => {
-      const parts = loc.split(',');
-      return parts[parts.length - 1].trim();
-    }).filter(c => c && c.toLowerCase() !== 'remote');
+    const countries = jobs.flatMap(job => (job.locations || []).map(normalizeCountry))
+      .filter(c => c !== null);
 
-    const unique = ['All', ...new Set(countries)];
-    // Handle Remote as a special case if needed or just included in countries
-    return unique.sort((a, b) => {
-      if (a === 'All') return -1;
-      if (b === 'All') return 1;
-      return a.localeCompare(b);
-    });
-  }, [jobs]);
+    const unique = [...new Set(countries)];
+    return unique.sort((a, b) => a.localeCompare(b));
+  }, [jobs, normalizeCountry]);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans selection:bg-indigo-500 selection:text-white pb-20 overflow-x-hidden">
@@ -200,7 +210,7 @@ function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
                 <span className="hidden sm:inline">Filters</span>
-                {(selectedCompany !== 'All' || selectedCountry !== 'All' || dateFilter !== 'all') && (
+                {(selectedCompany !== 'All' || selectedCountries.length > 0 || dateFilter !== 'all') && (
                   <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
                 )}
               </button>
@@ -208,28 +218,29 @@ function App() {
           </div>
 
           {/* Active Filter Chips */}
-          {(selectedCompany !== 'All' || selectedCountry !== 'All' || dateFilter !== 'all') && (
+          {(selectedCompany !== 'All' || selectedCountries.length > 0 || dateFilter !== 'all') && (
             <div className="flex flex-wrap justify-center gap-2 mt-4 max-w-4xl mx-auto">
               {selectedCompany !== 'All' && (
                 <button
                   onClick={() => setSelectedCompany('All')}
-                  className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[10px] font-bold text-indigo-400 flex items-center gap-2"
+                  className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[10px] font-bold text-indigo-400 flex items-center gap-2 hover:bg-indigo-500/20 transition-all"
                 >
                   Company: {selectedCompany} <span className="opacity-50">×</span>
                 </button>
               )}
-              {selectedCountry !== 'All' && (
+              {selectedCountries.map(country => (
                 <button
-                  onClick={() => setSelectedCountry('All')}
-                  className="px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/20 text-[10px] font-bold text-fuchsia-400 flex items-center gap-2"
+                  key={country}
+                  onClick={() => setSelectedCountries(prev => prev.filter(c => c !== country))}
+                  className="px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/20 text-[10px] font-bold text-fuchsia-400 flex items-center gap-2 hover:bg-fuchsia-500/20 transition-all"
                 >
-                  Country: {selectedCountry} <span className="opacity-50">×</span>
+                  Country: {country} <span className="opacity-50">×</span>
                 </button>
-              )}
+              ))}
               {dateFilter !== 'all' && (
                 <button
                   onClick={() => setDateFilter('all')}
-                  className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 flex items-center gap-2"
+                  className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 flex items-center gap-2 hover:bg-emerald-500/20 transition-all"
                 >
                   Date: {dateFilter === 'last10' ? 'Last 10 Days' : dateFilter === 'lastMonth' ? 'Last Month' : dateFilter === 'thisYear' ? 'This Year' : 'Custom'} <span className="opacity-50">×</span>
                 </button>
@@ -237,7 +248,7 @@ function App() {
               <button
                 onClick={() => {
                   setSelectedCompany('All');
-                  setSelectedCountry('All');
+                  setSelectedCountries([]);
                   setDateFilter('all');
                   setSearchQuery('');
                 }}
@@ -290,22 +301,34 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Country Filter */}
-                  <div className="space-y-3">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Country</label>
-                    <div className="relative group">
-                      <select
-                        className="w-full appearance-none bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-10 text-white font-medium cursor-pointer focus:ring-2 focus:ring-indigo-500/50 transition-all outline-none"
-                        value={selectedCountry}
-                        onChange={(e) => setSelectedCountry(e.target.value)}
-                      >
-                        {countriesList.map(country => (
-                          <option key={country} value={country} className="bg-[#1e293b] text-white">{country}</option>
-                        ))}
-                      </select>
-                      <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                      </svg>
+                  {/* Country Filter (Multi-select) */}
+                  <div className="space-y-3 sm:col-span-2">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1 flex justify-between">
+                      Countries
+                      <span className="text-indigo-400 normal-case font-bold">{selectedCountries.length} selected</span>
+                    </label>
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 max-h-48 overflow-y-auto custom-scrollbar grid grid-cols-2 gap-2">
+                      {countriesList.map(country => (
+                        <label key={country} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-all group">
+                          <div className="relative flex items-center">
+                            <input
+                              type="checkbox"
+                              className="peer h-5 w-5 appearance-none rounded-md border-2 border-white/10 bg-transparent checked:bg-indigo-600 checked:border-indigo-600 transition-all cursor-pointer"
+                              checked={selectedCountries.includes(country)}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedCountries(prev => [...prev, country]);
+                                else setSelectedCountries(prev => prev.filter(c => c !== country));
+                              }}
+                            />
+                            <svg className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <span className={`text-sm font-medium transition-colors ${selectedCountries.includes(country) ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>
+                            {country}
+                          </span>
+                        </label>
+                      ))}
                     </div>
                   </div>
 
@@ -377,7 +400,7 @@ function App() {
                   <button
                     onClick={() => {
                       setSelectedCompany('All');
-                      setSelectedCountry('All');
+                      setSelectedCountries([]);
                       setSortOrder('newest');
                       setDateFilter('all');
                       setStartDate('');
@@ -456,6 +479,20 @@ function App() {
         .no-scrollbar {
           -ms-overflow-style: none;
           scrollbar-width: none;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(99, 102, 241, 0.5);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(99, 102, 241, 0.8);
         }
       `}</style>
     </div>
