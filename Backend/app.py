@@ -1,6 +1,6 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-from pymongo import MongoClient
+from pymongo import MongoClient, TEXT
 from bson import ObjectId
 import os
 from dotenv import load_dotenv
@@ -11,27 +11,45 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Mongo connection
-
 client = MongoClient(os.getenv("MONGO_URL"))
 db = client['allJobs']
 collection = db['ericsson']
 
-# status check
-@app.route('/api/status', methods=['GET'])
-def get_status():
-    return jsonify({"status": "ok"})
+# Ensure indexes for performance
+collection.create_index([("name", TEXT), ("companyName", TEXT)])
+collection.create_index("postedAt")
+collection.create_index("createdAt")
 
 @app.route('/api/jobs', methods=['GET'])
 def get_jobs():
     try:
-        # Fetch all jobs from the collection
-        jobs_cursor = collection.find()
+        search = request.args.get('q', '')
+        company = request.args.get('company', 'All')
+        # We'll stick to a high limit for now, but server-side is more scalable
+        limit = int(request.args.get('limit', 1000)) 
+        
+        query = {}
+        
+        # Search filter
+        if search:
+            query["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"companyName": {"$regex": search, "$options": "i"}}
+            ]
+            
+        # Company filter
+        if company != 'All':
+            query["companyName"] = company
+
+        # Fetch with projection to save bandwidth
+        jobs_cursor = collection.find(query).sort("postedAt", -1).limit(limit)
+        
         jobs_list = []
         for job in jobs_cursor:
-            # Convert ObjectId to string for JSON serialization
             if '_id' in job:
                 job['_id'] = str(job['_id'])
             jobs_list.append(job)
+            
         return jsonify(jobs_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

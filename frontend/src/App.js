@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useDeferredValue, memo } from 'react';
 
 const normalizeCountry = (loc) => {
   if (!loc) return null;
@@ -35,15 +35,34 @@ function App() {
   const [endDate, setEndDate] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  // NEW: Debounced search term for server-side search
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 500); // 500ms debounce
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   useEffect(() => {
     const fetchJobs = async () => {
+      setLoading(true);
       try {
-        const response = await fetch(process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs');
+        const params = new URLSearchParams();
+        if (debouncedSearch) params.append('q', debouncedSearch);
+        if (selectedCompany !== 'All') params.append('company', selectedCompany);
+
+        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs'}?${params.toString()}`);
         if (!response.ok) {
           throw new Error('Failed to fetch jobs');
         }
         const data = await response.json();
-        setJobs(data);
+        const processedJobs = (data && Array.isArray(data) ? data : []).map(job => ({
+          ...job,
+          normalizedCountries: (job?.locations || []).map(normalizeCountry).filter(Boolean)
+        }));
+        setJobs(processedJobs);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -52,19 +71,17 @@ function App() {
     };
 
     fetchJobs();
-  }, []);
+  }, [debouncedSearch, selectedCompany]); // Re-fetch only on search or company change
+
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   // Filter and Group Logic
   const groupedJobs = useMemo(() => {
     let filtered = [...jobs];
 
-    // Search query filter
-    if (searchQuery) {
-      filtered = filtered.filter(job =>
-        job.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        job.companyName.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
+    // Client-side refinement (optional, but good for fast feedback)
+    // We already filter q and company on server, but we still handle 
+    // countries and dates on client for immediate response if needed.
 
     // Company filter
     if (selectedCompany !== 'All') {
@@ -74,10 +91,7 @@ function App() {
     // Country filter (Multi-select)
     if (selectedCountries.length > 0) {
       filtered = filtered.filter(job =>
-        job.locations?.some(loc => {
-          const norm = normalizeCountry(loc);
-          return norm && selectedCountries.includes(norm);
-        })
+        job.normalizedCountries.some(norm => selectedCountries.includes(norm))
       );
     }
 
@@ -112,20 +126,20 @@ function App() {
 
     // Sorting
     filtered.sort((a, b) => {
-      const dateA = new Date(a.postedAt || a.createdAt);
-      const dateB = new Date(b.postedAt || b.createdAt);
+      const dateA = (a._dateMs = a._dateMs || new Date(a.postedAt || a.createdAt || 0).getTime() || 0);
+      const dateB = (b._dateMs = b._dateMs || new Date(b.postedAt || b.createdAt || 0).getTime() || 0);
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
     });
 
     const groups = filtered.reduce((acc, job) => {
-      const company = job.companyName;
+      const company = job.companyName || 'Unknown Company';
       if (!acc[company]) acc[company] = [];
       acc[company].push(job);
       return acc;
     }, {});
 
     return groups;
-  }, [jobs, searchQuery, selectedCompany, selectedCountries, sortOrder, dateFilter, startDate, endDate]);
+  }, [jobs, deferredSearchQuery, selectedCompany, selectedCountries, sortOrder, dateFilter, startDate, endDate]);
 
   const sortedCompanyNames = useMemo(() => {
     return Object.keys(groupedJobs).sort();
@@ -137,9 +151,7 @@ function App() {
   }, [jobs]);
 
   const countriesList = useMemo(() => {
-    const countries = jobs.flatMap(job => (job.locations || []).map(normalizeCountry))
-      .filter(c => c !== null);
-
+    const countries = jobs.flatMap(job => job.normalizedCountries);
     const unique = [...new Set(countries)];
     return unique.sort((a, b) => a.localeCompare(b));
   }, [jobs]);
@@ -503,7 +515,7 @@ function App() {
   );
 }
 
-function JobRow({ company, jobs }) {
+const JobRow = memo(({ company, jobs }) => {
   const scrollRef = useRef(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(true);
@@ -599,9 +611,9 @@ function JobRow({ company, jobs }) {
       </div>
     </div>
   );
-}
+});
 
-function JobCard({ job }) {
+const JobCard = memo(({ job }) => {
   const formattedDate = new Date(job.postedAt || job.createdAt).toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'short',
@@ -620,11 +632,11 @@ function JobCard({ job }) {
               {job.department || 'General'}
             </span>
             <h3 className="text-lg sm:text-2xl font-bold text-white group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-indigo-300 group-hover:bg-clip-text transition-all duration-300 leading-tight">
-              {job.name}
+              {job.name || 'Untitled Position'}
             </h3>
             <p className="text-slate-400 font-bold text-xs sm:text-sm mt-1 flex items-center gap-1.5 sm:gap-2">
               <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-slate-600"></span>
-              <span className="truncate">{job.companyName.toUpperCase()}</span>
+              <span className="truncate">{(job.companyName || 'Unknown').toUpperCase()}</span>
             </p>
           </div>
         </div>
@@ -666,6 +678,6 @@ function JobCard({ job }) {
       </div>
     </div>
   );
-}
+});
 
 export default App;
