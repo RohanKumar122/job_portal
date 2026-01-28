@@ -35,22 +35,15 @@ function App() {
   const [endDate, setEndDate] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  // NEW: Debounced search term for server-side search
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-    }, 500); // 500ms debounce
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  // Applied search query for triggering fetches
+  const [activeSearch, setActiveSearch] = useState('');
 
   useEffect(() => {
     const fetchJobs = async () => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
-        if (debouncedSearch) params.append('q', debouncedSearch);
+        if (activeSearch) params.append('q', activeSearch);
         if (selectedCompany !== 'All') params.append('company', selectedCompany);
 
         const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs'}?${params.toString()}`);
@@ -71,7 +64,7 @@ function App() {
     };
 
     fetchJobs();
-  }, [debouncedSearch, selectedCompany]); // Re-fetch only on search or company change
+  }, [activeSearch, selectedCompany]); // Re-fetch only on search or company change
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -202,35 +195,11 @@ function App() {
 
           {/* Search and Filters */}
           <div className="max-w-4xl mx-auto mt-8 sm:mt-12">
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-1.5 sm:p-2 rounded-2xl sm:rounded-3xl shadow-2xl flex items-center gap-2">
-              <div className="flex-1 relative">
-                <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="UI Designer, Backend Engineer..."
-                  className="w-full bg-transparent border-none focus:ring-0 py-3 sm:py-4 pl-10 sm:pl-12 pr-4 text-sm sm:text-base text-white placeholder-slate-500 font-medium"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-
-              <div className="h-8 w-px bg-white/10 mx-1"></div>
-
-              <button
-                onClick={() => setIsFilterOpen(true)}
-                className="flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm sm:text-base font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95 whitespace-nowrap"
-              >
-                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                </svg>
-                <span className="hidden sm:inline">Filters</span>
-                {(selectedCompany !== 'All' || selectedCountries.length > 0 || dateFilter !== 'all') && (
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                )}
-              </button>
-            </div>
+            <SearchBar
+              onSearch={(query) => setActiveSearch(query)}
+              isFilterActive={selectedCompany !== 'All' || selectedCountries.length > 0 || dateFilter !== 'all'}
+              onOpenFilters={() => setIsFilterOpen(true)}
+            />
           </div>
 
           {/* Active Filter Chips */}
@@ -267,6 +236,7 @@ function App() {
                   setSelectedCountries([]);
                   setDateFilter('all');
                   setSearchQuery('');
+                  setActiveSearch('');
                 }}
                 className="text-[10px] font-bold text-slate-500 hover:text-white transition-colors ml-2"
               >
@@ -676,6 +646,59 @@ const JobCard = memo(({ job }) => {
           Apply
         </a>
       </div>
+    </div>
+  );
+});
+
+const SearchBar = memo(({ onSearch, isFilterActive, onOpenFilters }) => {
+  const [query, setQuery] = useState('');
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      onSearch(query);
+    }
+  };
+
+  return (
+    <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-1.5 sm:p-2 rounded-2xl sm:rounded-3xl shadow-2xl flex items-center gap-2">
+      <div className="flex-1 relative">
+        <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          placeholder="UI Designer, Backend Engineer..."
+          className="w-full bg-transparent border-none focus:ring-0 py-3 sm:py-4 pl-10 sm:pl-12 pr-4 text-sm sm:text-base text-white placeholder-slate-500 font-medium"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+      </div>
+
+      <button
+        onClick={() => onSearch(query)}
+        className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white/5 hover:bg-white/10 text-indigo-400 hover:text-indigo-300 transition-all active:scale-90"
+        title="Search"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      </button>
+
+      <div className="h-8 w-px bg-white/10 mx-1"></div>
+
+      <button
+        onClick={onOpenFilters}
+        className="flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm sm:text-base font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95 whitespace-nowrap"
+      >
+        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+        <span className="hidden sm:inline">Filters</span>
+        {isFilterActive && (
+          <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+        )}
+      </button>
     </div>
   );
 });

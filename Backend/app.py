@@ -25,8 +25,6 @@ def get_jobs():
     try:
         search = request.args.get('q', '')
         company = request.args.get('company', 'All')
-        # We'll stick to a high limit for now, but server-side is more scalable
-        limit = int(request.args.get('limit', 1000)) 
         
         query = {}
         
@@ -41,8 +39,8 @@ def get_jobs():
         if company != 'All':
             query["companyName"] = company
 
-        # Fetch with projection to save bandwidth
-        jobs_cursor = collection.find(query).sort("postedAt", -1).limit(limit)
+        # Fetch all results (removed limit)
+        jobs_cursor = collection.find(query).sort("postedAt", -1)
         
         jobs_list = []
         for job in jobs_cursor:
