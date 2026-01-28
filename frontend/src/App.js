@@ -4,22 +4,59 @@ import React, { useState, useEffect, useMemo, useRef, memo } from 'react';
 const normalizeCountry = (loc) => {
   if (!loc) return null;
   const l = loc.toLowerCase();
-  if (l.includes('remote')) return null;
+
+  // If explicitly remote or containing remote, categorize as Remote
+  if (l.includes('remote')) return 'Remote';
 
   const text = loc.toUpperCase().trim();
 
-  // Comprehensive Mapping
-  if (/\b(INDIA|IN|IND)\b/i.test(text) || text.includes('INDIA-') || text.startsWith('IND-') || text.startsWith('IN-')) return 'India';
-  if (/\b(USA|US|UNITED STATES|AMERICA|U\.S\.A\.)\b/i.test(text)) return 'USA';
-  if (/\b(UK|UNITED KINGDOM|GB|GREAT BRITAIN|U\.K\.)\b/i.test(text)) return 'UK';
-  if (/\b(CANADA|CA|CAN)\b/i.test(text)) return 'Canada';
-  if (/\b(SINGAPORE|SG|SGP)\b/i.test(text)) return 'Singapore';
-  if (/\b(GERMANY|DE|GER)\b/i.test(text)) return 'Germany';
-  if (/\b(AUSTRALIA|AU|AUS)\b/i.test(text)) return 'Australia';
+  // Comprehensive Mapping Table
+  const mapping = {
+    'INDIA': 'India', 'IND': 'India', 'IN': 'India',
+    'USA': 'USA', 'US': 'USA', 'UNITED STATES': 'USA', 'AMERICA': 'USA', 'U.S.A.': 'USA',
+    'UK': 'UK', 'UNITED KINGDOM': 'UK', 'GB': 'UK', 'GREAT BRITAIN': 'UK', 'U.K.': 'UK',
+    'CANADA': 'Canada', 'CA': 'Canada', 'CAN': 'Canada',
+    'SINGAPORE': 'Singapore', 'SG': 'Singapore', 'SGP': 'Singapore',
+    'GERMANY': 'Germany', 'DE': 'Germany', 'GER': 'Germany',
+    'AUSTRALIA': 'Australia', 'AU': 'Australia', 'AUS': 'Australia',
+    'FRANCE': 'France', 'FR': 'France',
+    'SPAIN': 'Spain', 'ES': 'Spain',
+    'ITALY': 'Italy', 'IT': 'Italy',
+    'JAPAN': 'Japan', 'JP': 'Japan',
+    'CHINA': 'China', 'CN': 'China',
+    'BRAZIL': 'Brazil', 'BR': 'Brazil',
+    'SWEDEN': 'Sweden', 'SE': 'Sweden',
+    'NETHERLANDS': 'Netherlands', 'NL': 'Netherlands',
+    'POLAND': 'Poland', 'PL': 'Poland',
+    'IRELAND': 'Ireland', 'IE': 'Ireland',
+    'SWITZERLAND': 'Switzerland', 'CH': 'Switzerland',
+    'MEXICO': 'Mexico', 'MX': 'Mexico',
+    'ROMANIA': 'Romania', 'RO': 'Romania',
+    'HUNGARY': 'Hungary', 'HU': 'Hungary',
+    'EGYPT': 'Egypt', 'EG': 'Egypt',
+    'MALAYSIA': 'Malaysia', 'MY': 'Malaysia',
+    'THAILAND': 'Thailand', 'TH': 'Thailand',
+    'VIETNAM': 'Vietnam', 'VN': 'Vietnam'
+  };
 
+  // Check for whole word matches in the entire string first
+  for (const [key, value] of Object.entries(mapping)) {
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escapedKey}\\b`, 'i');
+    if (regex.test(text)) return value;
+  }
+
+  // Fallback: extract the last part (often the country)
   const parts = loc.split(',');
   const possibleCountry = parts[parts.length - 1].trim();
-  return possibleCountry || null;
+
+  // Basic validation for the extracted string
+  if (possibleCountry.length > 2 && possibleCountry.length < 30) {
+    // Capitalize first letter of each word
+    return possibleCountry.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+  }
+
+  return null;
 };
 
 function App() {
@@ -34,6 +71,7 @@ function App() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
 
   // Applied search query for triggering fetches
   const [activeSearch, setActiveSearch] = useState('');
@@ -146,6 +184,20 @@ function App() {
     const unique = [...new Set(countries)];
     return unique.sort((a, b) => a.localeCompare(b));
   }, [jobs]);
+
+  const countryCounts = useMemo(() => {
+    const counts = {};
+    jobs.forEach(job => {
+      (job.normalizedCountries || []).forEach(c => {
+        counts[c] = (counts[c] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [jobs]);
+
+  const filteredCountries = useMemo(() => {
+    return countriesList.filter(c => c.toLowerCase().includes(countrySearch.toLowerCase()));
+  }, [countriesList, countrySearch]);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans selection:bg-indigo-500 selection:text-white pb-20 overflow-x-hidden">
@@ -289,12 +341,21 @@ function App() {
 
                   {/* Country Filter (Multi-select) */}
                   <div className="space-y-3 sm:col-span-2">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1 flex justify-between">
-                      Countries
-                      <span className="text-indigo-400 normal-case font-bold">{selectedCountries.length} selected</span>
-                    </label>
+                    <div className="flex items-center justify-between pl-1">
+                      <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Countries</label>
+                      <span className="text-indigo-400 text-[10px] font-bold uppercase tracking-tight">{selectedCountries.length} selected</span>
+                    </div>
+                    <div className="relative mb-2">
+                      <input
+                        type="text"
+                        placeholder="Search countries..."
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white outline-none focus:ring-1 focus:ring-indigo-500/30 transition-all"
+                        value={countrySearch}
+                        onChange={(e) => setCountrySearch(e.target.value)}
+                      />
+                    </div>
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-4 max-h-48 overflow-y-auto custom-scrollbar grid grid-cols-2 gap-2">
-                      {countriesList.map(country => (
+                      {filteredCountries.map(country => (
                         <label key={country} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-all group">
                           <div className="relative flex items-center">
                             <input
@@ -310,8 +371,11 @@ function App() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" />
                             </svg>
                           </div>
-                          <span className={`text-sm font-medium transition-colors ${selectedCountries.includes(country) ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>
+                          <span className={`text-sm font-medium transition-colors flex-1 truncate ${selectedCountries.includes(country) ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>
                             {country}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-600 group-hover:text-indigo-400/50 transition-colors">
+                            {countryCounts[country] || 0}
                           </span>
                         </label>
                       ))}
@@ -391,6 +455,7 @@ function App() {
                       setDateFilter('all');
                       setStartDate('');
                       setEndDate('');
+                      setCountrySearch('');
                     }}
                     className="flex-1 py-4 px-6 rounded-2xl border border-white/10 text-slate-400 font-bold hover:bg-white/5 hover:text-white transition-all text-sm uppercase tracking-widest"
                   >
