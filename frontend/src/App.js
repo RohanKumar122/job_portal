@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef, useDeferredValue, memo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, memo } from 'react';
 
 const normalizeCountry = (loc) => {
   if (!loc) return null;
@@ -66,8 +66,6 @@ function App() {
     fetchJobs();
   }, [activeSearch, selectedCompany]); // Re-fetch only on search or company change
 
-  const deferredSearchQuery = useDeferredValue(searchQuery);
-
   // Filter and Group Logic
   const groupedJobs = useMemo(() => {
     let filtered = [...jobs];
@@ -132,7 +130,7 @@ function App() {
     }, {});
 
     return groups;
-  }, [jobs, deferredSearchQuery, selectedCompany, selectedCountries, sortOrder, dateFilter, startDate, endDate]);
+  }, [jobs, selectedCompany, selectedCountries, sortOrder, dateFilter, startDate, endDate]);
 
   const sortedCompanyNames = useMemo(() => {
     return Object.keys(groupedJobs).sort();
@@ -196,6 +194,8 @@ function App() {
           {/* Search and Filters */}
           <div className="max-w-4xl mx-auto mt-8 sm:mt-12">
             <SearchBar
+              query={searchQuery}
+              setQuery={setSearchQuery}
               onSearch={(query) => setActiveSearch(query)}
               isFilterActive={selectedCompany !== 'All' || selectedCountries.length > 0 || dateFilter !== 'all'}
               onOpenFilters={() => setIsFilterOpen(true)}
@@ -650,9 +650,7 @@ const JobCard = memo(({ job }) => {
   );
 });
 
-const SearchBar = memo(({ onSearch, isFilterActive, onOpenFilters }) => {
-  const [query, setQuery] = useState('');
-
+const SearchBar = memo(({ query, setQuery, onSearch, isFilterActive, onOpenFilters }) => {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       onSearch(query);
