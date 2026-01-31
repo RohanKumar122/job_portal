@@ -13,7 +13,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Mongo connection
 client = MongoClient(os.getenv("MONGO_URL"))
 db = client['allJobs']
-collection = db['ericsson']
+collection = db['projection']
 
 # Ensure indexes for performance
 collection.create_index([("name", TEXT), ("companyName", TEXT)])
