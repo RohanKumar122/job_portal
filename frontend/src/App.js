@@ -73,50 +73,27 @@ function App() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
 
-  // Pagination states
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalJobs, setTotalJobs] = useState(0);
-  const JOBS_PER_PAGE = 30;
-
   // Applied search query for triggering fetches
   const [activeSearch, setActiveSearch] = useState('');
 
-  // Reset page and jobs when filters change
-  useEffect(() => {
-    setPage(1);
-    setJobs([]);
-  }, [activeSearch, selectedCompany]);
-
   useEffect(() => {
     const fetchJobs = async () => {
-      if (page === 1) setLoading(true);
+      setLoading(true);
       try {
         const params = new URLSearchParams();
         if (activeSearch) params.append('q', activeSearch);
         if (selectedCompany !== 'All') params.append('company', selectedCompany);
-        params.append('page', page);
-        params.append('limit', JOBS_PER_PAGE);
 
         const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs'}?${params.toString()}`);
         if (!response.ok) {
           throw new Error('Failed to fetch jobs');
         }
         const data = await response.json();
-
-        // Handle paginated response structure
-        const jobsToProcess = data.jobs || (Array.isArray(data) ? data : []);
-        const total = data.total || jobsToProcess.length;
-        const pages = data.pages || 1;
-
-        const processedJobs = jobsToProcess.map(job => ({
+        const processedJobs = (data && Array.isArray(data) ? data : []).map(job => ({
           ...job,
           normalizedCountries: (job?.locations || []).map(normalizeCountry).filter(Boolean)
         }));
-
-        setJobs(prev => page === 1 ? processedJobs : [...prev, ...processedJobs]);
-        setTotalPages(pages);
-        setTotalJobs(total);
+        setJobs(processedJobs);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -125,7 +102,7 @@ function App() {
     };
 
     fetchJobs();
-  }, [activeSearch, selectedCompany, page]); // Re-fetch on search, company, or page change
+  }, [activeSearch, selectedCompany]); // Re-fetch only on search or company change
 
   // Filter and Group Logic
   const groupedJobs = useMemo(() => {
@@ -257,7 +234,7 @@ function App() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-indigo-500"></span>
             </span>
-            {totalJobs} Active Positions
+            {jobs.length} Active Positions
           </div>
           <h2 className="text-3xl sm:text-5xl md:text-7xl font-black text-white tracking-tighter leading-tight px-2">
             Elevate Your <span className="bg-gradient-to-r from-indigo-400 via-fuchsia-400 to-indigo-400 bg-[length:200%_auto] animate-gradient bg-clip-text text-transparent">Professional</span> Journey
@@ -516,31 +493,9 @@ function App() {
               <p className="text-sm sm:text-base text-slate-400">{error}</p>
             </div>
           ) : sortedCompanyNames.length > 0 ? (
-            <>
-              {sortedCompanyNames.map(company => (
-                <JobRow key={company} company={company} jobs={groupedJobs[company]} />
-              ))}
-
-              {/* Pagination Controls */}
-              {page < totalPages && (
-                <div className="flex justify-center mt-12 pb-12">
-                  <button
-                    onClick={() => setPage(prev => prev + 1)}
-                    disabled={loading}
-                    className="group relative px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl transition-all shadow-xl shadow-indigo-600/20 active:scale-95 flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    ) : (
-                      <svg className="w-5 h-5 group-hover:translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                      </svg>
-                    )}
-                    <span>LOAD MORE OPPORTUNITIES</span>
-                  </button>
-                </div>
-              )}
-            </>
+            sortedCompanyNames.map(company => (
+              <JobRow key={company} company={company} jobs={groupedJobs[company]} />
+            ))
           ) : (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-12 sm:py-24 bg-white/5 border border-white/5 rounded-2xl sm:rounded-3xl">
               <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
