@@ -25,6 +25,9 @@ def get_jobs():
     try:
         search = request.args.get('q', '')
         company = request.args.get('company', 'All')
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 50))
+        skip = (page - 1) * limit
         
         query = {}
         
@@ -35,12 +38,22 @@ def get_jobs():
                 {"companyName": {"$regex": search, "$options": "i"}}
             ]
             
-        # Company filter
-        if company != 'All':
-            query["companyName"] = company
+        # Projection to fetch only necessary fields (reduces payload & DB load)
+        projection = {
+            "name": 1,
+            "companyName": 1,
+            "department": 1,
+            "locations": 1,
+            "postedAt": 1,
+            "createdAt": 1,
+            "workLocationOption": 1,
+            "positionUrl": 1,
+            "_id": 1
+        }
 
-        # Fetch all results (removed limit)
-        jobs_cursor = collection.find(query).sort("postedAt", -1)
+        # Fetch results with pagination and projection
+        total_jobs = collection.count_documents(query)
+        jobs_cursor = collection.find(query, projection).sort("postedAt", -1).skip(skip).limit(limit)
         
         jobs_list = []
         for job in jobs_cursor:
@@ -48,7 +61,18 @@ def get_jobs():
                 job['_id'] = str(job['_id'])
             jobs_list.append(job)
             
-        return jsonify(jobs_list)
+        response_data = {
+            "jobs": jobs_list,
+            "total": total_jobs,
+            "page": page,
+            "limit": limit,
+            "pages": (total_jobs + limit - 1) // limit
+        }
+        
+        resp = jsonify(response_data)
+        # Enable caching for 5 minutes to handle high traffic spikes
+        resp.headers['Cache-Control'] = 'public, max-age=300'
+        return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
