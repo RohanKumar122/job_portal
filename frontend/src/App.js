@@ -63,7 +63,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCompany, setSelectedCompany] = useState('All');
+  const [selectedCompanies, setSelectedCompanies] = useState([]);
   const [selectedCountries, setSelectedCountries] = useState([]);
   const [sortOrder, setSortOrder] = useState('newest');
   const [dateFilter, setDateFilter] = useState('all');
@@ -71,10 +71,12 @@ function App() {
   const [endDate, setEndDate] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+  const [companySearch, setCompanySearch] = useState('');
   const [metadata, setMetadata] = useState({ locations: [] });
 
   // Applied search query for triggering fetches
   const [activeSearch, setActiveSearch] = useState('');
+  const [visibleCompanyCount, setVisibleCompanyCount] = useState(10);
 
   // Fetch Metadata (locations)
   useEffect(() => {
@@ -120,7 +122,7 @@ function App() {
 
   // Filter Logic - Now handled per Row, but we still need some lists for the UI
   const companiesList = useMemo(() => {
-    return ['All', ...companies.map(c => c.name)];
+    return companies.map(c => c.name).sort();
   }, [companies]);
 
   const countriesList = useMemo(() => {
@@ -129,18 +131,22 @@ function App() {
     return [...new Set(normalized)].sort((a, b) => a.localeCompare(b));
   }, [metadata.locations]);
 
-  const filteredCompanies = useMemo(() => {
-    if (selectedCompany !== 'All') {
-      return companies.filter(c => c.name === selectedCompany);
+  const filteredCompaniesForUI = useMemo(() => {
+    return companiesList.filter(name =>
+      name.toLowerCase().includes(companySearch.toLowerCase())
+    );
+  }, [companiesList, companySearch]);
+
+  const currentDisplayCompanies = useMemo(() => {
+    if (selectedCompanies.length > 0) {
+      return companies.filter(c => selectedCompanies.includes(c.name));
     }
     return companies;
-  }, [companies, selectedCompany]);
-
-  // We'll use this inside JobRow instead of a global groupedJobs
+  }, [companies, selectedCompanies]);
 
   const sortedCompanyNames = useMemo(() => {
-    return filteredCompanies.map(c => c.name).sort();
-  }, [filteredCompanies]);
+    return currentDisplayCompanies.map(c => c.name).sort();
+  }, [currentDisplayCompanies]);
 
   const countryCounts = useMemo(() => {
     // Simplified: we don't have all job counts per country easily without a separate metadata call
@@ -202,29 +208,30 @@ function App() {
               query={searchQuery}
               setQuery={setSearchQuery}
               onSearch={(query) => setActiveSearch(query)}
-              isFilterActive={selectedCompany !== 'All' || selectedCountries.length > 0 || dateFilter !== 'all'}
+              isFilterActive={selectedCompanies.length > 0 || selectedCountries.length > 0 || dateFilter !== 'all'}
               onOpenFilters={() => setIsFilterOpen(true)}
             />
           </div>
 
           {/* Active Filter Chips */}
-          {(selectedCompany !== 'All' || selectedCountries.length > 0 || dateFilter !== 'all') && (
+          {(selectedCompanies.length > 0 || selectedCountries.length > 0 || dateFilter !== 'all') && (
             <div className="flex flex-wrap justify-center gap-2 mt-4 max-w-4xl mx-auto">
-              {selectedCompany !== 'All' && (
+              {selectedCompanies.map(company => (
                 <button
-                  onClick={() => setSelectedCompany('All')}
+                  key={company}
+                  onClick={() => setSelectedCompanies(prev => prev.filter(c => c !== company))}
                   className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[10px] font-bold text-indigo-400 flex items-center gap-2 hover:bg-indigo-500/20 transition-all"
                 >
-                  Company: {selectedCompany} <span className="opacity-50">×</span>
+                  {company} <span className="opacity-50">×</span>
                 </button>
-              )}
+              ))}
               {selectedCountries.map(country => (
                 <button
                   key={country}
                   onClick={() => setSelectedCountries(prev => prev.filter(c => c !== country))}
                   className="px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/20 text-[10px] font-bold text-fuchsia-400 flex items-center gap-2 hover:bg-fuchsia-500/20 transition-all"
                 >
-                  Country: {country} <span className="opacity-50">×</span>
+                  {country} <span className="opacity-50">×</span>
                 </button>
               ))}
               {dateFilter !== 'all' && (
@@ -237,7 +244,7 @@ function App() {
               )}
               <button
                 onClick={() => {
-                  setSelectedCompany('All');
+                  setSelectedCompanies([]);
                   setSelectedCountries([]);
                   setDateFilter('all');
                   setSearchQuery('');
@@ -274,21 +281,42 @@ function App() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Company Filter */}
-                  <div className="space-y-3">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">Company</label>
-                    <div className="relative group">
-                      <select
-                        className="w-full appearance-none bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-10 text-white font-medium cursor-pointer focus:ring-2 focus:ring-indigo-500/50 transition-all outline-none"
-                        value={selectedCompany}
-                        onChange={(e) => setSelectedCompany(e.target.value)}
-                      >
-                        {companiesList.map(company => (
-                          <option key={company} value={company} className="bg-[#1e293b] text-white">{company}</option>
-                        ))}
-                      </select>
-                      <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                      </svg>
+                  <div className="space-y-3 sm:col-span-2">
+                    <div className="flex items-center justify-between pl-1">
+                      <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Company</label>
+                      <span className="text-indigo-400 text-[10px] font-bold uppercase tracking-tight">{selectedCompanies.length} selected</span>
+                    </div>
+                    <div className="relative mb-2">
+                      <input
+                        type="text"
+                        placeholder="Search companies..."
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-4 text-xs text-white outline-none focus:ring-1 focus:ring-indigo-500/30 transition-all"
+                        value={companySearch}
+                        onChange={(e) => setCompanySearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 max-h-48 overflow-y-auto custom-scrollbar grid grid-cols-2 gap-2">
+                      {filteredCompaniesForUI.map(company => (
+                        <label key={company} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-all group">
+                          <div className="relative flex items-center">
+                            <input
+                              type="checkbox"
+                              className="peer h-5 w-5 appearance-none rounded-md border-2 border-white/10 bg-transparent checked:bg-indigo-600 checked:border-indigo-600 transition-all cursor-pointer"
+                              checked={selectedCompanies.includes(company)}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedCompanies(prev => [...prev, company]);
+                                else setSelectedCompanies(prev => prev.filter(c => c !== company));
+                              }}
+                            />
+                            <svg className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <span className={`text-sm font-medium transition-colors flex-1 truncate ${selectedCompanies.includes(company) ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>
+                            {company}
+                          </span>
+                        </label>
+                      ))}
                     </div>
                   </div>
 
@@ -402,13 +430,14 @@ function App() {
                 <div className="pt-8 flex gap-4">
                   <button
                     onClick={() => {
-                      setSelectedCompany('All');
+                      setSelectedCompanies([]);
                       setSelectedCountries([]);
                       setSortOrder('newest');
                       setDateFilter('all');
                       setStartDate('');
                       setEndDate('');
                       setCountrySearch('');
+                      setCompanySearch('');
                     }}
                     className="flex-1 py-4 px-6 rounded-2xl border border-white/10 text-slate-400 font-bold hover:bg-white/5 hover:text-white transition-all text-sm uppercase tracking-widest"
                   >
@@ -446,24 +475,40 @@ function App() {
               <p className="text-sm sm:text-base text-slate-400">{error}</p>
             </div>
           ) : sortedCompanyNames.length > 0 ? (
-            sortedCompanyNames.map(companyName => {
-              const companyData = companies.find(c => c.name === companyName);
-              return (
-                <JobRow
-                  key={companyName}
-                  company={companyName}
-                  totalCount={companyData?.count || 0}
-                  filters={{
-                    activeSearch,
-                    selectedCountries,
-                    dateFilter,
-                    sortOrder,
-                    startDate,
-                    endDate
-                  }}
-                />
-              );
-            })
+            <>
+              {sortedCompanyNames.slice(0, visibleCompanyCount).map(companyName => {
+                const companyData = companies.find(c => c.name === companyName);
+                return (
+                  <JobRow
+                    key={companyName}
+                    company={companyName}
+                    totalCount={companyData?.count || 0}
+                    filters={{
+                      activeSearch,
+                      selectedCountries,
+                      dateFilter,
+                      sortOrder,
+                      startDate,
+                      endDate
+                    }}
+                  />
+                );
+              })}
+
+              {visibleCompanyCount < sortedCompanyNames.length && (
+                <div className="max-w-7xl mx-auto px-4 pb-20 text-center">
+                  <button
+                    onClick={() => setVisibleCompanyCount(prev => prev + 10)}
+                    className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold hover:bg-white/10 hover:border-indigo-500/50 transition-all flex items-center gap-3 mx-auto group"
+                  >
+                    <svg className="w-5 h-5 text-indigo-400 group-hover:rotate-180 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                    </svg>
+                    Load More Companies
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-12 sm:py-24 bg-white/5 border border-white/5 rounded-2xl sm:rounded-3xl">
               <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
@@ -537,7 +582,10 @@ const JobRow = memo(({ company, totalCount, filters }) => {
       params.append('skip', currentSkip.toString());
       if (filters.activeSearch) params.append('q', filters.activeSearch);
       if (filters.sortOrder) params.append('sort', filters.sortOrder);
-      // Backend handling for locations might need special care, but for now:
+      if (filters.dateFilter) params.append('dateFilter', filters.dateFilter);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+
       filters.selectedCountries.forEach(c => params.append('locations', c));
 
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs'}?${params.toString()}`);
@@ -563,7 +611,7 @@ const JobRow = memo(({ company, totalCount, filters }) => {
     } finally {
       setLoading(false);
     }
-  }, [company, filters.activeSearch, filters.selectedCountries, filters.sortOrder]);
+  }, [company, filters.activeSearch, filters.selectedCountries, filters.sortOrder, filters.dateFilter, filters.startDate, filters.endDate]);
 
   // Re-fetch when filters change (reset skip to 0)
   useEffect(() => {
