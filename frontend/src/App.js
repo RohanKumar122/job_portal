@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useMemo, useRef, memo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, memo, useCallback } from 'react';
 
 const normalizeCountry = (loc) => {
   if (!loc) return null;
@@ -60,40 +59,55 @@ const normalizeCountry = (loc) => {
 };
 
 function App() {
-  const [jobs, setJobs] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('All');
-  const [selectedCountries, setSelectedCountries] = useState([]); // Multiple selection
+  const [selectedCountries, setSelectedCountries] = useState([]);
   const [sortOrder, setSortOrder] = useState('newest');
-  const [dateFilter, setDateFilter] = useState('all'); // all, last10, lastMonth, thisYear, custom
+  const [dateFilter, setDateFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+  const [metadata, setMetadata] = useState({ locations: [] });
 
   // Applied search query for triggering fetches
   const [activeSearch, setActiveSearch] = useState('');
 
+  // Fetch Metadata (locations)
   useEffect(() => {
-    const fetchJobs = async () => {
+    const fetchMetadata = async () => {
+      try {
+        const response = await fetch(`${process.env.REACT_APP_API_URL?.replace('/jobs', '/metadata') || 'http://127.0.0.1:8000/api/metadata'}`);
+        if (response.ok) {
+          const data = await response.json();
+          setMetadata(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch metadata:', err);
+      }
+    };
+    fetchMetadata();
+  }, []);
+
+  useEffect(() => {
+    const fetchCompanies = async () => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
         if (activeSearch) params.append('q', activeSearch);
-        if (selectedCompany !== 'All') params.append('company', selectedCompany);
 
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs'}?${params.toString()}`);
+        const apiUrl = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs';
+        const companiesUrl = apiUrl.replace('/jobs', '/companies');
+
+        const response = await fetch(`${companiesUrl}?${params.toString()}`);
         if (!response.ok) {
-          throw new Error('Failed to fetch jobs');
+          throw new Error('Failed to fetch companies');
         }
         const data = await response.json();
-        const processedJobs = (data && Array.isArray(data) ? data : []).map(job => ({
-          ...job,
-          normalizedCountries: (job?.locations || []).map(normalizeCountry).filter(Boolean)
-        }));
-        setJobs(processedJobs);
+        setCompanies(data || []);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -101,99 +115,38 @@ function App() {
       }
     };
 
-    fetchJobs();
-  }, [activeSearch, selectedCompany]); // Re-fetch only on search or company change
+    fetchCompanies();
+  }, [activeSearch]);
 
-  // Filter and Group Logic
-  const groupedJobs = useMemo(() => {
-    let filtered = [...jobs];
-
-    // Client-side refinement (optional, but good for fast feedback)
-    // We already filter q and company on server, but we still handle 
-    // countries and dates on client for immediate response if needed.
-
-    // Company filter
-    if (selectedCompany !== 'All') {
-      filtered = filtered.filter(job => job.companyName === selectedCompany);
-    }
-
-    // Country filter (Multi-select)
-    if (selectedCountries.length > 0) {
-      filtered = filtered.filter(job =>
-        job.normalizedCountries.some(norm => selectedCountries.includes(norm))
-      );
-    }
-
-    // Date filtering
-    const now = new Date();
-    if (dateFilter !== 'all') {
-      filtered = filtered.filter(job => {
-        const jobDate = new Date(job.postedAt || job.createdAt);
-        if (dateFilter === 'last10') {
-          const tenDaysAgo = new Date();
-          tenDaysAgo.setDate(now.getDate() - 10);
-          return jobDate >= tenDaysAgo;
-        }
-        if (dateFilter === 'lastMonth') {
-          const oneMonthAgo = new Date();
-          oneMonthAgo.setMonth(now.getMonth() - 1);
-          return jobDate >= oneMonthAgo;
-        }
-        if (dateFilter === 'thisYear') {
-          const startOfYear = new Date(now.getFullYear(), 0, 1);
-          return jobDate >= startOfYear;
-        }
-        if (dateFilter === 'custom' && startDate && endDate) {
-          const start = new Date(startDate);
-          const end = new Date(endDate);
-          end.setHours(23, 59, 59, 999); // Inclusion of the full end day
-          return jobDate >= start && jobDate <= end;
-        }
-        return true;
-      });
-    }
-
-    // Sorting
-    filtered.sort((a, b) => {
-      const dateA = (a._dateMs = a._dateMs || new Date(a.postedAt || a.createdAt || 0).getTime() || 0);
-      const dateB = (b._dateMs = b._dateMs || new Date(b.postedAt || b.createdAt || 0).getTime() || 0);
-      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
-    });
-
-    const groups = filtered.reduce((acc, job) => {
-      const company = job.companyName || 'Unknown Company';
-      if (!acc[company]) acc[company] = [];
-      acc[company].push(job);
-      return acc;
-    }, {});
-
-    return groups;
-  }, [jobs, selectedCompany, selectedCountries, sortOrder, dateFilter, startDate, endDate]);
-
-  const sortedCompanyNames = useMemo(() => {
-    return Object.keys(groupedJobs).sort();
-  }, [groupedJobs]);
-
+  // Filter Logic - Now handled per Row, but we still need some lists for the UI
   const companiesList = useMemo(() => {
-    const unique = ['All', ...new Set(jobs.map(job => job.companyName))];
-    return unique;
-  }, [jobs]);
+    return ['All', ...companies.map(c => c.name)];
+  }, [companies]);
 
   const countriesList = useMemo(() => {
-    const countries = jobs.flatMap(job => job.normalizedCountries);
-    const unique = [...new Set(countries)];
-    return unique.sort((a, b) => a.localeCompare(b));
-  }, [jobs]);
+    // We normalize countries from the metadata locations
+    const normalized = metadata.locations.map(normalizeCountry).filter(Boolean);
+    return [...new Set(normalized)].sort((a, b) => a.localeCompare(b));
+  }, [metadata.locations]);
+
+  const filteredCompanies = useMemo(() => {
+    if (selectedCompany !== 'All') {
+      return companies.filter(c => c.name === selectedCompany);
+    }
+    return companies;
+  }, [companies, selectedCompany]);
+
+  // We'll use this inside JobRow instead of a global groupedJobs
+
+  const sortedCompanyNames = useMemo(() => {
+    return filteredCompanies.map(c => c.name).sort();
+  }, [filteredCompanies]);
 
   const countryCounts = useMemo(() => {
-    const counts = {};
-    jobs.forEach(job => {
-      (job.normalizedCountries || []).forEach(c => {
-        counts[c] = (counts[c] || 0) + 1;
-      });
-    });
-    return counts;
-  }, [jobs]);
+    // Simplified: we don't have all job counts per country easily without a separate metadata call
+    // or just show nothing for now to keep it fast.
+    return {};
+  }, []);
 
   const filteredCountries = useMemo(() => {
     return countriesList.filter(c => c.toLowerCase().includes(countrySearch.toLowerCase()));
@@ -234,7 +187,7 @@ function App() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-indigo-500"></span>
             </span>
-            {jobs.length} Active Positions
+            {companies.reduce((sum, c) => sum + (c.count || 0), 0)} Active Positions
           </div>
           <h2 className="text-3xl sm:text-5xl md:text-7xl font-black text-white tracking-tighter leading-tight px-2">
             Elevate Your <span className="bg-gradient-to-r from-indigo-400 via-fuchsia-400 to-indigo-400 bg-[length:200%_auto] animate-gradient bg-clip-text text-transparent">Professional</span> Journey
@@ -493,9 +446,24 @@ function App() {
               <p className="text-sm sm:text-base text-slate-400">{error}</p>
             </div>
           ) : sortedCompanyNames.length > 0 ? (
-            sortedCompanyNames.map(company => (
-              <JobRow key={company} company={company} jobs={groupedJobs[company]} />
-            ))
+            sortedCompanyNames.map(companyName => {
+              const companyData = companies.find(c => c.name === companyName);
+              return (
+                <JobRow
+                  key={companyName}
+                  company={companyName}
+                  totalCount={companyData?.count || 0}
+                  filters={{
+                    activeSearch,
+                    selectedCountries,
+                    dateFilter,
+                    sortOrder,
+                    startDate,
+                    endDate
+                  }}
+                />
+              );
+            })
           ) : (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-12 sm:py-24 bg-white/5 border border-white/5 rounded-2xl sm:rounded-3xl">
               <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
@@ -550,31 +518,71 @@ function App() {
   );
 }
 
-const JobRow = memo(({ company, jobs }) => {
+const JobRow = memo(({ company, totalCount, filters }) => {
   const scrollRef = useRef(null);
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const skipRef = useRef(0);
+  const [hasMore, setHasMore] = useState(true);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(true);
-  const [remainingCount, setRemainingCount] = useState(jobs.length);
 
-  const updateArrows = () => {
+  const fetchJobs = useCallback(async (reset = false) => {
+    setLoading(true);
+    try {
+      const currentSkip = reset ? 0 : skipRef.current;
+      const params = new URLSearchParams();
+      params.append('company', company);
+      params.append('limit', '10');
+      params.append('skip', currentSkip.toString());
+      if (filters.activeSearch) params.append('q', filters.activeSearch);
+      if (filters.sortOrder) params.append('sort', filters.sortOrder);
+      // Backend handling for locations might need special care, but for now:
+      filters.selectedCountries.forEach(c => params.append('locations', c));
+
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/jobs'}?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to fetch jobs');
+
+      const data = await response.json();
+      const processed = (data || []).map(job => ({
+        ...job,
+        normalizedCountries: (job?.locations || []).map(normalizeCountry).filter(Boolean)
+      }));
+
+      if (reset) {
+        setJobs(processed);
+        skipRef.current = processed.length;
+      } else {
+        setJobs(prev => [...prev, ...processed]);
+        skipRef.current += processed.length;
+      }
+
+      setHasMore(processed.length === 10);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [company, filters.activeSearch, filters.selectedCountries, filters.sortOrder]);
+
+  // Re-fetch when filters change (reset skip to 0)
+  useEffect(() => {
+    fetchJobs(true);
+  }, [fetchJobs]);
+
+  const updateArrows = useCallback(() => {
     if (scrollRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
       setShowLeftArrow(scrollLeft > 10);
       setShowRightArrow(scrollLeft + clientWidth < scrollWidth - 10);
-
-      // Calculate approximately how many cards are hidden to the right
-      // Card width is roughly 320px-416px. Let's use 380px as avg.
-      const hiddenWidth = scrollWidth - (scrollLeft + clientWidth);
-      const hiddenCount = Math.max(0, Math.ceil(hiddenWidth / 380));
-      setRemainingCount(hiddenCount);
     }
-  };
+  }, []);
 
   useEffect(() => {
     updateArrows();
     window.addEventListener('resize', updateArrows);
     return () => window.removeEventListener('resize', updateArrows);
-  }, [jobs]);
+  }, [updateArrows, jobs]);
 
   const scroll = (direction) => {
     if (scrollRef.current) {
@@ -584,6 +592,8 @@ const JobRow = memo(({ company, jobs }) => {
     }
   };
 
+  if (jobs.length === 0 && !loading) return null;
+
   return (
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4 sm:mb-6 flex items-center justify-between">
@@ -591,16 +601,11 @@ const JobRow = memo(({ company, jobs }) => {
           <span className="w-2 h-8 bg-indigo-500 rounded-full"></span>
           {company}
           <span className="text-[10px] font-black text-slate-400 bg-white/5 px-2 py-1 rounded-md border border-white/5 uppercase tracking-widest">
-            {jobs.length} Results
+            {totalCount || jobs.length} Total
           </span>
         </h3>
 
         <div className="flex items-center gap-4">
-          {remainingCount > 0 && (
-            <span className="hidden sm:block text-[10px] font-black text-indigo-400/80 bg-indigo-500/5 px-3 py-1.5 rounded-full border border-indigo-500/10 uppercase tracking-widest animate-pulse">
-              +{remainingCount} More Ahead
-            </span>
-          )}
           <div className="hidden md:flex gap-2">
             <button
               onClick={() => scroll('left')}
@@ -636,12 +641,39 @@ const JobRow = memo(({ company, jobs }) => {
             </div>
           ))}
 
-          {/* End of row indicator */}
-          <div className="flex-shrink-0 w-24 flex items-center justify-center pr-8 sm:pr-0">
-            <div className="w-12 h-12 rounded-full border border-white/5 bg-white/5 flex items-center justify-center">
-              <svg className="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg>
+          {/* Load More Button at the end of the row */}
+          {hasMore && (
+            <div className="flex-shrink-0 w-80 flex items-center justify-center pr-8">
+              <button
+                onClick={() => fetchJobs()}
+                disabled={loading}
+                className="group/btn relative w-full h-[340px] rounded-[2rem] border-2 border-dashed border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all flex flex-col items-center justify-center gap-4 group"
+              >
+                <div className="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center group-hover/btn:scale-110 transition-transform">
+                  {loading ? (
+                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <svg className="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                  )}
+                </div>
+                <div className="text-center">
+                  <span className="block text-white font-bold text-lg">Load More</span>
+                  <span className="text-slate-500 text-sm font-medium">Keep exploring {company}</span>
+                </div>
+              </button>
             </div>
-          </div>
+          )}
+
+          {!hasMore && jobs.length > 0 && (
+            <div className="flex-shrink-0 w-24 flex items-center justify-center pr-8 sm:pr-0 text-slate-600">
+              <div className="flex flex-col items-center gap-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" /></svg>
+                <span className="text-[10px] font-bold uppercase tracking-widest">End</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
