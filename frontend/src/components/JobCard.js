@@ -1,5 +1,8 @@
 import { memo, useMemo, useState } from 'react';
-import { normalizeWorkMode, WORK_MODE_STYLES, formatPostedLabel } from '../utils/format';
+import {
+  normalizeWorkMode, WORK_MODE_STYLES, formatPostedLabel, formatUpdatedLabel,
+  formatIstDateTime, parseIstTimestamp,
+} from '../utils/format';
 
 const AVATAR_PALETTES = [
   'from-indigo-500 to-blue-500',
@@ -32,9 +35,22 @@ const JobCard = memo(({ job }) => {
   const extraLocationCount = locations.length - visibleLocations.length;
 
   const postedLabel = useMemo(
-    () => formatPostedLabel(job.postedAt, job.createdAt),
-    [job.postedAt, job.createdAt]
+    () => formatPostedLabel(job.postedAt, job.created_at),
+    [job.postedAt, job.created_at]
   );
+  const postedTitle = useMemo(() => {
+    const instant = parseIstTimestamp(job.postedAt) || parseIstTimestamp(job.created_at);
+    return instant ? formatIstDateTime(instant) : undefined;
+  }, [job.postedAt, job.created_at]);
+
+  // Shown as an explicit absolute IST timestamp (not "3 days ago") so it's
+  // unambiguous on its own - a relative label would need the reader to
+  // already know which timezone "now" was measured in.
+  const updatedRelative = useMemo(() => formatUpdatedLabel(job.updated_at), [job.updated_at]);
+  const updatedAbsolute = useMemo(() => {
+    const instant = parseIstTimestamp(job.updated_at);
+    return instant ? formatIstDateTime(instant) : null;
+  }, [job.updated_at]);
 
   const handleCopyLink = async (e) => {
     e.preventDefault();
@@ -107,12 +123,20 @@ const JobCard = memo(({ job }) => {
               </span>
             </div>
           )}
-          <div className="flex items-center text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium">
+          <div className="flex items-center text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium" title={postedTitle}>
             <svg className="w-4 h-4 mr-2 flex-shrink-0 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Posted {postedLabel}
           </div>
+          {updatedRelative && (
+            <div className="flex items-center text-slate-400 dark:text-slate-500 text-[11px] sm:text-xs font-medium" title={updatedAbsolute}>
+              <svg className="w-4 h-4 mr-2 flex-shrink-0 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Updated {updatedRelative} <span className="ml-1 opacity-60">IST</span>
+            </div>
+          )}
         </div>
       </div>
 

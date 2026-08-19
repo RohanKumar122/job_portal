@@ -41,6 +41,7 @@ function App() {
   const [selectedCountries, setSelectedCountries] = useState([]);
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [selectedWorkModes, setSelectedWorkModes] = useState([]);
+  const [dateBasis, setDateBasis] = useState('created_at'); // 'created_at' (Date Added) | 'updated_at' (Last Updated)
   const [dateFilter, setDateFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -99,7 +100,6 @@ function App() {
     setSelectedWorkModes((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   }, []);
 
-  const companiesList = useMemo(() => companies.map((c) => c.name).sort(), [companies]);
   const filteredCompaniesForUI = useMemo(
     () => companies.filter((c) => c.name.toLowerCase().includes(companySearch.toLowerCase())),
     [companies, companySearch]
@@ -140,17 +140,17 @@ function App() {
   const gridFilters = useMemo(
     () => ({
       activeSearch, selectedCompanies, selectedCountries, selectedDepartments, selectedWorkModes,
-      dateFilter, startDate, endDate, sortOrder,
+      dateBasis, dateFilter, startDate, endDate, sortOrder,
     }),
-    [activeSearch, selectedCompanies, selectedCountries, selectedDepartments, selectedWorkModes, dateFilter, startDate, endDate, sortOrder]
+    [activeSearch, selectedCompanies, selectedCountries, selectedDepartments, selectedWorkModes, dateBasis, dateFilter, startDate, endDate, sortOrder]
   );
 
   const carouselFilters = useMemo(
     () => ({
       activeSearch, selectedCountries, selectedDepartments, selectedWorkModes,
-      dateFilter, startDate, endDate, sortOrder,
+      dateBasis, dateFilter, startDate, endDate, sortOrder,
     }),
-    [activeSearch, selectedCountries, selectedDepartments, selectedWorkModes, dateFilter, startDate, endDate, sortOrder]
+    [activeSearch, selectedCountries, selectedDepartments, selectedWorkModes, dateBasis, dateFilter, startDate, endDate, sortOrder]
   );
 
   const clearAllFilters = useCallback(() => {
@@ -158,6 +158,7 @@ function App() {
     setSelectedCountries([]);
     setSelectedDepartments([]);
     setSelectedWorkModes([]);
+    setDateBasis('created_at');
     setDateFilter('all');
     setStartDate('');
     setEndDate('');
@@ -171,6 +172,7 @@ function App() {
     setSelectedDepartments([]);
     setSelectedWorkModes([]);
     setSortOrder('newest');
+    setDateBasis('created_at');
     setDateFilter('all');
     setStartDate('');
     setEndDate('');
@@ -202,14 +204,15 @@ function App() {
       onRemove: () => setSelectedWorkModes((prev) => prev.filter((m) => m !== mode)),
     }));
     if (dateFilter !== 'all') {
+      const basisLabel = dateBasis === 'updated_at' ? 'Updated' : 'Added';
       chips.push({
-        id: 'date', label: `Added: ${DATE_FILTER_LABELS[dateFilter] || dateFilter}`,
+        id: 'date', label: `${basisLabel}: ${DATE_FILTER_LABELS[dateFilter] || dateFilter}`,
         colorClass: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20',
         onRemove: () => setDateFilter('all'),
       });
     }
     return chips;
-  }, [selectedCompanies, selectedCountries, selectedDepartments, selectedWorkModes, dateFilter]);
+  }, [selectedCompanies, selectedCountries, selectedDepartments, selectedWorkModes, dateBasis, dateFilter]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0f172a] text-slate-700 dark:text-slate-200 font-sans selection:bg-indigo-500 selection:text-white pb-20 overflow-x-hidden transition-colors duration-300">
@@ -262,6 +265,8 @@ function App() {
           onToggleDepartment={toggleDepartment}
           selectedWorkModes={selectedWorkModes}
           onToggleWorkMode={toggleWorkMode}
+          dateBasis={dateBasis}
+          setDateBasis={setDateBasis}
           dateFilter={dateFilter}
           setDateFilter={setDateFilter}
           startDate={startDate}

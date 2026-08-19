@@ -28,11 +28,12 @@ const CompanyCarousel = memo(({ company, totalCount, filters }) => {
         locations: filters.selectedCountries,
         departments: filters.selectedDepartments,
         workTypes: filters.selectedWorkModes,
+        dateField: filters.dateBasis,
         dateFilter: filters.dateFilter,
         startDate: filters.startDate,
         endDate: filters.endDate,
         sort: filters.sortOrder,
-        sortBy: 'createdAt',
+        sortBy: 'created_at',
       });
 
       if (reset) {

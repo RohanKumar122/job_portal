@@ -96,6 +96,7 @@ export default function FilterPanel({
   countries, countrySearch, setCountrySearch, selectedCountries, onToggleCountry,
   departments, departmentSearch, setDepartmentSearch, selectedDepartments, onToggleDepartment,
   selectedWorkModes, onToggleWorkMode,
+  dateBasis, setDateBasis,
   dateFilter, setDateFilter, startDate, setStartDate, endDate, setEndDate,
   sortOrder, setSortOrder,
   onReset,
@@ -184,7 +185,15 @@ export default function FilterPanel({
           </div>
 
           <div className="space-y-3">
-            <label className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1 block">Date Added</label>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pl-1">
+              <label className="text-xs font-black text-slate-500 uppercase tracking-widest block">Date Filter</label>
+              <PillGroup
+                options={[{ value: 'created_at', label: 'Date Added' }, { value: 'updated_at', label: 'Last Updated' }]}
+                selected={dateBasis}
+                onToggle={setDateBasis}
+                multi={false}
+              />
+            </div>
             <PillGroup options={DATE_OPTIONS} selected={dateFilter} onToggle={setDateFilter} multi={false} />
 
             {dateFilter === 'custom' && (

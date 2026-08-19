@@ -81,32 +81,79 @@ export const WORK_MODE_STYLES = {
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function toDateSafe(raw) {
+// The scraper that populates this data runs on an India-based host and
+// writes naive "YYYY-MM-DD HH:MM:SS" strings with no timezone suffix - those
+// are IST (UTC+5:30) wall-clock values. Everything below treats them as such
+// and formats back into IST, so the UI reads correctly (and consistently)
+// regardless of the viewer's own browser/system timezone.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+// Parses a naive "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS" string as IST wall-clock
+// and returns the real absolute instant it represents (or null if the string
+// isn't in that shape - loose text like "Jul 31, 2026" is left to the caller).
+export function parseIstTimestamp(raw) {
   if (!raw) return null;
   const s = String(raw).trim();
   if (!s) return null;
-  // "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS" -> normalize to ISO so every
-  // browser parses it consistently (Safari is strict about the space vs "T").
   const isoLike = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}:\d{2})?$/;
-  const parseable = isoLike.test(s) ? s.replace(' ', 'T') : s;
-  const d = new Date(parseable);
+  if (!isoLike.test(s)) return null;
+  const withTime = s.includes(':') ? s.replace(' ', 'T') : `${s}T00:00:00`;
+  const d = new Date(`${withTime}+05:30`);
   return isNaN(d.getTime()) ? null : d;
 }
 
-function relativeOrAbsolute(d) {
-  const diffDays = Math.floor((Date.now() - d.getTime()) / 86400000);
-  if (diffDays < 0) return `${MONTH_ABBR[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  return `${MONTH_ABBR[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+// Reads a real instant back out as its IST wall-clock calendar/time parts.
+// Done via millisecond math + UTC getters (not Intl timezone data), so it's
+// deterministic in every environment.
+function istParts(instant) {
+  const shifted = new Date(instant.getTime() + IST_OFFSET_MS);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth(),
+    date: shifted.getUTCDate(),
+    hours: shifted.getUTCHours(),
+    minutes: shifted.getUTCMinutes(),
+  };
 }
 
-// The API's `postedAt` field is inconsistent across source companies: ISO
+export function formatIstAbsolute(instant) {
+  const p = istParts(instant);
+  return `${p.date} ${MONTH_ABBR[p.month]} ${p.year}`;
+}
+
+// Full precision, explicitly labeled IST - used for tooltips.
+export function formatIstDateTime(instant) {
+  const p = istParts(instant);
+  const hour12 = p.hours % 12 || 12;
+  const ampm = p.hours >= 12 ? 'PM' : 'AM';
+  const minutes = String(p.minutes).padStart(2, '0');
+  return `${p.date} ${MONTH_ABBR[p.month]} ${p.year}, ${hour12}:${minutes} ${ampm} IST`;
+}
+
+function relativeIstLabel(instant) {
+  const nowParts = istParts(new Date());
+  const targetParts = istParts(instant);
+  const dayDiff = Math.round(
+    (Date.UTC(nowParts.year, nowParts.month, nowParts.date) - Date.UTC(targetParts.year, targetParts.month, targetParts.date))
+    / 86400000
+  );
+
+  if (dayDiff === 0) {
+    const diffMs = Date.now() - instant.getTime();
+    if (diffMs < 60000) return 'Just now';
+    if (diffMs < 3600000) return `${Math.floor(diffMs / 60000)}m ago`;
+    return `${Math.floor(diffMs / 3600000)}h ago`;
+  }
+  if (dayDiff === 1) return 'Yesterday';
+  if (dayDiff > 1 && dayDiff < 7) return `${dayDiff} days ago`;
+  return formatIstAbsolute(instant);
+}
+
+// The API's `postedAt` field is inconsistent across source companies: IST
 // datetime, date-only, loose text ("Jul 31, 2026"), an already-human phrase
 // ("Posted Yesterday"), or empty. This normalizes all of those into one
-// clean, short label. Falls back to the (reliable) `createdAt` ingestion
-// timestamp when postedAt is missing.
+// clean, short label in IST. Falls back to the reliable `created_at`
+// ingestion timestamp when postedAt is missing.
 export function formatPostedLabel(postedAt, createdAt) {
   const raw = (postedAt || '').trim();
 
@@ -114,13 +161,20 @@ export function formatPostedLabel(postedAt, createdAt) {
     if (/posted/i.test(raw)) {
       return raw.replace(/^posted\s*/i, '').trim() || 'Recently';
     }
-    const parsed = toDateSafe(raw);
-    if (parsed) return relativeOrAbsolute(parsed);
+    const parsed = parseIstTimestamp(raw);
+    if (parsed) return relativeIstLabel(parsed);
     return raw;
   }
 
-  const fallback = toDateSafe(createdAt);
-  if (fallback) return relativeOrAbsolute(fallback);
+  const fallback = parseIstTimestamp(createdAt);
+  if (fallback) return relativeIstLabel(fallback);
 
   return 'Recently';
+}
+
+// `updated_at` is always a clean IST "YYYY-MM-DD HH:MM:SS" string - no
+// fallback/loose-format handling needed the way postedAt requires.
+export function formatUpdatedLabel(updatedAt) {
+  const parsed = parseIstTimestamp(updatedAt);
+  return parsed ? relativeIstLabel(parsed) : null;
 }

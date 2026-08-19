@@ -27,11 +27,12 @@ export default function JobsGrid({ filters, onClearFilters }) {
         locations: filters.selectedCountries,
         departments: filters.selectedDepartments,
         workTypes: filters.selectedWorkModes,
+        dateField: filters.dateBasis,
         dateFilter: filters.dateFilter,
         startDate: filters.startDate,
         endDate: filters.endDate,
         sort: filters.sortOrder,
-        sortBy: 'createdAt',
+        sortBy: 'created_at',
         limit: PAGE_SIZE,
         skip,
       });

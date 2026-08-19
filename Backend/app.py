@@ -54,7 +54,8 @@ def setup_indexes():
         collection.create_index("companyName", background=True)
         collection.create_index("locations", background=True)
         collection.create_index("postedAt", background=True)
-        collection.create_index("createdAt", background=True)
+        collection.create_index("created_at", background=True)
+        collection.create_index("updated_at", background=True)
         collection.create_index("department", background=True)
         collection.create_index("workLocationOption", background=True)
         print("Backend: Regular indexes ready.")
@@ -84,19 +85,22 @@ def get_jobs():
         skip = max(int(request.args.get('skip', 0)), 0)
         sort_order = request.args.get('sort', 'newest')
 
-        # Which field drives ordering. createdAt (ingestion timestamp) is a
-        # consistent "YYYY-MM-DD HH:MM:SS" string across every source, unlike
-        # postedAt which varies by scraper (ISO datetime, "Jul 31, 2026",
+        # Which field drives ordering. created_at/updated_at (snake_case) are
+        # the reliable ingestion/refresh timestamps written by the scraper -
+        # always populated, consistent "YYYY-MM-DD HH:MM:SS" strings. The
+        # camelCase `createdAt` some docs also carry is a stale/partial
+        # duplicate (empty on ~8% of docs) and is intentionally not used here.
+        # postedAt varies by source scraper (ISO datetime, "Jul 31, 2026",
         # "Posted Yesterday", plain date, or empty) and sorts incorrectly as text.
-        sort_by = request.args.get('sortBy', 'createdAt')
-        if sort_by not in ('createdAt', 'postedAt'):
-            sort_by = 'createdAt'
+        sort_by = request.args.get('sortBy', 'created_at')
+        if sort_by not in ('created_at', 'updated_at', 'postedAt'):
+            sort_by = 'created_at'
 
         # Date Filters - same reasoning applies, so date-range filters are
-        # applied against createdAt by default.
-        date_field = request.args.get('dateField', 'createdAt')
-        if date_field not in ('createdAt', 'postedAt'):
-            date_field = 'createdAt'
+        # applied against created_at by default.
+        date_field = request.args.get('dateField', 'created_at')
+        if date_field not in ('created_at', 'updated_at', 'postedAt'):
+            date_field = 'created_at'
         date_filter = request.args.get('dateFilter', 'all')
         start_date_str = request.args.get('startDate', '')
         end_date_str = request.args.get('endDate', '')
@@ -136,17 +140,22 @@ def get_jobs():
             ]
             and_clauses.append({"$or": work_type_or})
 
-        # Date filtering logic
-        now = datetime.utcnow()
+        # Date filtering logic. The scraper writes created_at/updated_at/postedAt
+        # as naive local-clock strings from an India-based host, i.e. they are
+        # IST (UTC+5:30) wall-clock values with no timezone suffix. "now" for
+        # bucket boundaries must be computed the same way regardless of which
+        # timezone this Flask process itself happens to run in (IST locally,
+        # UTC on Vercel) - otherwise "today"/"last7" would be off by 5:30.
+        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
         date_query = None
         if date_filter == 'today':
-            date_query = {"$gte": now.strftime('%Y-%m-%d 00:00:00')}
+            date_query = {"$gte": now_ist.strftime('%Y-%m-%d 00:00:00')}
         elif date_filter == 'last7':
-            date_query = {"$gte": (now - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')}
+            date_query = {"$gte": (now_ist - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')}
         elif date_filter == 'last30':
-            date_query = {"$gte": (now - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')}
+            date_query = {"$gte": (now_ist - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')}
         elif date_filter == 'thisYear':
-            date_query = {"$gte": datetime(now.year, 1, 1).strftime('%Y-%m-%d %H:%M:%S')}
+            date_query = {"$gte": datetime(now_ist.year, 1, 1).strftime('%Y-%m-%d %H:%M:%S')}
         elif date_filter == 'custom' and start_date_str:
             date_query = {"$gte": start_date_str}
             if end_date_str:
@@ -164,7 +173,7 @@ def get_jobs():
         # Performance: Projection to exclude heavy fields
         projection = {
             "_id": 1, "name": 1, "companyName": 1, "locations": 1,
-            "postedAt": 1, "createdAt": 1, "positionUrl": 1,
+            "postedAt": 1, "created_at": 1, "updated_at": 1, "positionUrl": 1,
             "workLocationOption": 1, "department": 1
         }
 
