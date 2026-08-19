@@ -3,6 +3,7 @@ from flask_cors import CORS
 from pymongo import MongoClient, TEXT
 from bson import ObjectId
 import os
+import re
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import time
@@ -54,6 +55,8 @@ def setup_indexes():
         collection.create_index("locations", background=True)
         collection.create_index("postedAt", background=True)
         collection.create_index("createdAt", background=True)
+        collection.create_index("department", background=True)
+        collection.create_index("workLocationOption", background=True)
         print("Backend: Regular indexes ready.")
     except Exception as e:
         print(f"Backend: Regular index notice: {str(e)[:100]}...")
@@ -75,26 +78,41 @@ def get_jobs():
         company = request.args.get('company', 'All')
         companies_param = request.args.get('companies', '')
         locations = request.args.getlist('locations')
-        limit = int(request.args.get('limit', 10))
-        skip = int(request.args.get('skip', 0))
+        departments = request.args.getlist('departments')
+        work_types = request.args.getlist('workTypes')
+        limit = min(max(int(request.args.get('limit', 10)), 1), 50)
+        skip = max(int(request.args.get('skip', 0)), 0)
         sort_order = request.args.get('sort', 'newest')
-        
-        # Date Filters
+
+        # Which field drives ordering. createdAt (ingestion timestamp) is a
+        # consistent "YYYY-MM-DD HH:MM:SS" string across every source, unlike
+        # postedAt which varies by scraper (ISO datetime, "Jul 31, 2026",
+        # "Posted Yesterday", plain date, or empty) and sorts incorrectly as text.
+        sort_by = request.args.get('sortBy', 'createdAt')
+        if sort_by not in ('createdAt', 'postedAt'):
+            sort_by = 'createdAt'
+
+        # Date Filters - same reasoning applies, so date-range filters are
+        # applied against createdAt by default.
+        date_field = request.args.get('dateField', 'createdAt')
+        if date_field not in ('createdAt', 'postedAt'):
+            date_field = 'createdAt'
         date_filter = request.args.get('dateFilter', 'all')
         start_date_str = request.args.get('startDate', '')
         end_date_str = request.args.get('endDate', '')
-        
+
         query = {}
-        
+        and_clauses = []
+
         # Search filter (Regex-based text search)
         if search:
-            regex_search = {"$regex": search, "$options": "i"}
-            query["$or"] = [
+            regex_search = {"$regex": re.escape(search), "$options": "i"}
+            and_clauses.append({"$or": [
                 {"name": regex_search},
                 {"companyName": regex_search},
                 {"locations": regex_search}
-            ]
-            
+            ]})
+
         # Company/Companies filter
         if companies_param:
             query["companyName"] = {"$in": companies_param.split(',')}
@@ -105,38 +123,61 @@ def get_jobs():
         if locations:
             query["locations"] = {"$in": locations}
 
+        # Department filter
+        if departments:
+            query["department"] = {"$in": departments}
+
+        # Work-mode filter: canonical buckets (Remote/Hybrid/Onsite) matched
+        # case-insensitively against the raw, inconsistently-cased workLocationOption
+        if work_types:
+            work_type_or = [
+                {"workLocationOption": {"$regex": re.escape(wt), "$options": "i"}}
+                for wt in work_types
+            ]
+            and_clauses.append({"$or": work_type_or})
+
         # Date filtering logic
         now = datetime.utcnow()
-        if date_filter == 'last10':
-            query["postedAt"] = {"$gte": (now - timedelta(days=10)).isoformat()}
-        elif date_filter == 'lastMonth':
-            query["postedAt"] = {"$gte": (now - timedelta(days=30)).isoformat()}
+        date_query = None
+        if date_filter == 'today':
+            date_query = {"$gte": now.strftime('%Y-%m-%d 00:00:00')}
+        elif date_filter == 'last7':
+            date_query = {"$gte": (now - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')}
+        elif date_filter == 'last30':
+            date_query = {"$gte": (now - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')}
         elif date_filter == 'thisYear':
-            query["postedAt"] = {"$gte": datetime(now.year, 1, 1).isoformat()}
+            date_query = {"$gte": datetime(now.year, 1, 1).strftime('%Y-%m-%d %H:%M:%S')}
         elif date_filter == 'custom' and start_date_str:
             date_query = {"$gte": start_date_str}
             if end_date_str:
-                date_query["$lte"] = end_date_str
-            query["postedAt"] = date_query
+                date_query["$lte"] = end_date_str + " 23:59:59"
 
-        # Sorting logic
+        if date_query:
+            query[date_field] = date_query
+
+        if and_clauses:
+            query["$and"] = and_clauses
+
+        # Sorting logic - secondary _id key keeps skip/limit pagination stable
         sort_val = -1 if sort_order == 'newest' else 1
-        
+
         # Performance: Projection to exclude heavy fields
         projection = {
-            "_id": 1, "name": 1, "companyName": 1, "locations": 1, 
-            "postedAt": 1, "createdAt": 1, "positionUrl": 1, 
+            "_id": 1, "name": 1, "companyName": 1, "locations": 1,
+            "postedAt": 1, "createdAt": 1, "positionUrl": 1,
             "workLocationOption": 1, "department": 1
         }
-        
-        cursor = collection.find(query, projection).sort("postedAt", sort_val).skip(skip).limit(limit)
-        
+
+        cursor = collection.find(query, projection).sort(
+            [(sort_by, sort_val), ("_id", sort_val)]
+        ).skip(skip).limit(limit)
+
         jobs_list = []
         for job in cursor:
             if '_id' in job:
                 job['_id'] = str(job['_id'])
             jobs_list.append(job)
-            
+
         return jsonify(jobs_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -185,10 +226,14 @@ def get_metadata():
         if cache["metadata"]["data"] and (now - cache["metadata"]["timestamp"] < CACHE_TIMEOUT):
             return jsonify(cache["metadata"]["data"])
             
-        # Get unique locations efficiently via index
+        # Get unique filter values efficiently via indexes
         locations = collection.distinct("locations")
+        departments = collection.distinct("department")
+        work_location_options = collection.distinct("workLocationOption")
         result = {
-            "locations": sorted([l for l in locations if l])
+            "locations": sorted([l for l in locations if l]),
+            "departments": sorted([d for d in departments if d]),
+            "workLocationOptions": sorted([w for w in work_location_options if w])
         }
         
         cache["metadata"]["data"] = result
